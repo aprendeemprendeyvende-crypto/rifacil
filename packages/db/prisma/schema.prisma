@@ -1,0 +1,743 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  RIFERO
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum RaffleStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  SOLD_OUT
+  DRAWN
+  CANCELLED
+}
+
+enum NumberStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  PAID
+}
+
+enum DrawMethod {
+  RANDOM_SYSTEM
+  LIVE_STREAM
+  PHYSICAL_BALLS
+  BLOCKCHAIN
+}
+
+enum SaleStatus {
+  PENDING
+  RESERVED
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum CampaignType {
+  WHATSAPP
+  SMS
+  EMAIL
+  SOCIAL_POST
+  REMARKETING
+  REFERRAL
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentMethod {
+  // Venezuela (prioridad)
+  PAGO_MOVIL
+  BINANCE
+  ZELLE
+  EFECTIVO_USD
+  EFECTIVO_VES
+  TRANSFERENCIA_VES
+  // Colombia / genericos (multi-pais)
+  NEQUI
+  DAVIPLATA
+  PSE
+  BANK_TRANSFER
+  MERCADOPAGO
+  STRIPE
+  WOMPI
+  CASH
+}
+
+enum RateSource {
+  BCV
+  BINANCE
+  MANUAL
+}
+
+// ============================================================
+// USERS & AUTH
+// ============================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique // opcional: el login es por teléfono; Google lo setea si se usa
+  emailVerified DateTime?
+  phone         String    @unique // login del rifero (E.164, ej. +584241234567)
+  phoneVerified DateTime?
+  passwordHash  String?   // bcrypt; null si el usuario solo usa OAuth (Google)
+  name          String
+  avatar        String?
+  image         String?   // requerido por PrismaAdapter (NextAuth); foto de perfil OAuth
+  role          Role      @default(RIFERO)
+
+  // Branding personal
+  brandName     String?
+  brandLogo     String?
+  brandColor    String?   @default("#3b82f6")
+  brandSlug     String?   @unique // riffas.app/mi-marca
+
+  // Onboarding
+  onboardingCompleted Boolean @default(false)
+  onboardingStep      Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  raffles       Raffle[]
+  sales         Sale[]
+  contacts      Contact[]
+  campaigns     Campaign[]
+  vendors       Vendor[]
+  subscriptions Subscription?
+  settings      UserSettings?
+  activityLogs  ActivityLog[]
+  exchangeRates ExchangeRate[]
+
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+}
+
+model UserSettings {
+  id    String @id @default(cuid())
+  userId String @unique
+
+  // Appearance
+  theme           String   @default("system") // light, dark, system
+  language        String   @default("es")
+  currency        String   @default("VES")
+  timezone        String   @default("America/Caracas")
+
+  // Notifications
+  emailNotifications Boolean @default(true)
+  smsNotifications   Boolean @default(false)
+  pushNotifications  Boolean @default(true)
+  whatsappNotifications Boolean @default(true)
+
+  // WhatsApp Business
+  whatsappConnected    Boolean @default(false)
+  whatsappPhoneNumber  String?
+  whatsappApiToken     String? @db.Text
+
+  // Payment methods accepted
+  acceptedPaymentMethods PaymentMethod[] @default([PAGO_MOVIL, BINANCE, ZELLE, EFECTIVO_USD])
+
+  // Templates
+  receiptTemplate      String? @default("default")
+  whatsappSaleTemplate String? @db.Text
+  emailSaleTemplate    String? @db.Text
+
+  // Automation
+  autoConfirmPayments  Boolean @default(false)
+  autoSendReceipt      Boolean @default(true)
+  autoSendWhatsApp     Boolean @default(true)
+  reservationExpiryMinutes Int @default(30)
+
+  // Datos de cobro del rifero (Venezuela)
+  pmBankCode   String?
+  pmPhone      String?
+  pmIdNumber   String?
+  binanceEmail String?
+  zelleEmail   String?
+  zelleName    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// RAFFLES
+// ============================================================
+
+model Raffle {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  description String?  @db.Text
+  prize       String
+  prizeValue  Decimal  @db.Decimal(12, 2)
+  prizeImages String[]
+
+  // Number configuration
+  totalNumbers    Int
+  pricePerNumber  Decimal  @db.Decimal(10, 2)
+  numberFormat    String   @default("000")
+  numberPrefix    String?
+  numberSuffix    String?
+  allowPickNumbers Boolean @default(true)
+  allowRandom      Boolean @default(true)
+  minPurchase      Int     @default(1)
+  maxPurchase      Int?
+
+  // Discount packages
+  discountPackages Json?
+
+  // Dates
+  startDate   DateTime
+  endDate     DateTime?
+  drawDate    DateTime?
+  status      RaffleStatus @default(DRAFT)
+
+  // Draw
+  drawMethod    DrawMethod @default(RANDOM_SYSTEM)
+  winnerNumber  String?
+  winnerId      String?
+  drawVideoUrl  String?
+  drawTimestamp DateTime?
+  drawSeed      String?
+
+  // Visibility
+  isPublic      Boolean @default(true)
+  allowSharing  Boolean @default(true)
+  passwordProtected Boolean @default(false)
+  password      String?
+
+  // Social
+  socialImage   String?
+  ogTitle       String?
+  ogDescription String?
+
+  // Stats (denormalized)
+  soldCount     Int @default(0)
+  revenue       Decimal @default(0) @db.Decimal(12, 2)
+  viewCount     Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numbers  RaffleNumber[]
+  sales    Sale[]
+  campaigns Campaign[]
+
+  @@index([userId, status])
+  @@index([status])
+  @@index([startDate])
+}
+
+model RaffleNumber {
+  id    String @id @default(cuid())
+  raffleId String
+  number   String
+  status   NumberStatus @default(AVAILABLE)
+
+  // Reservation
+  reservedAt    DateTime?
+  reservedUntil DateTime?
+  reservedByIp  String?
+
+  // Sale data
+  soldAt        DateTime?
+  paidAt        DateTime?
+  paymentMethod PaymentMethod?
+  paymentProof  String?
+  paymentReference String?
+
+  // Receipt
+  receiptUrl    String?
+  receiptNumber String?
+
+  // Commission
+  vendorId      String?
+  commission    Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  raffle  Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  sale    Sale?    @relation(fields: [saleId], references: [id])
+  saleId  String?
+  contact Contact? @relation(fields: [contactId], references: [id])
+  contactId String?
+  vendor  Vendor?  @relation(fields: [vendorId], references: [id])
+
+  @@unique([raffleId, number])
+  @@index([raffleId, status])
+  @@index([contactId])
+  @@index([vendorId])
+  @@index([status])
+}
+
+// ============================================================
+// CONTACTS (CRM)
+// ============================================================
+
+model Contact {
+  id   String @id @default(cuid())
+  userId String
+
+  name    String
+  phone   String
+  email   String?
+  city    String?
+  country String @default("VE")
+
+  // Source tracking
+  source      String?
+  importedFrom String?
+  importedAt   DateTime?
+
+  // CRM
+  tags        String[]
+  notes       String? @db.Text
+  birthday    DateTime?
+
+  // Metrics (denormalized)
+  totalSpent   Decimal @default(0) @db.Decimal(12, 2)
+  totalTickets Int     @default(0)
+  totalRaffles Int     @default(0)
+  lastPurchase DateTime?
+  firstPurchase DateTime?
+
+  // Engagement
+  lastContactDate DateTime?
+  lastContactMethod String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numbers RaffleNumber[]
+  sales   Sale[]
+
+  @@unique([userId, phone])
+  @@index([userId, name])
+  @@index([userId, phone])
+  @@index([userId, tags])
+  @@index([userId, source])
+  @@index([userId, lastPurchase])
+}
+
+// ============================================================
+// SALES
+// ============================================================
+
+model Sale {
+  id       String @id @default(cuid())
+  raffleId String
+  contactId String
+  vendorId  String?
+  userId    String
+
+  // Numbers
+  numbers         String[]
+  totalNumbers    Int
+
+  // Pricing
+  totalAmount     Decimal @db.Decimal(12, 2)
+  discountApplied Decimal? @db.Decimal(10, 2)
+  discountReason  String?
+  finalAmount     Decimal @db.Decimal(12, 2)
+  rateUsed        Decimal? @db.Decimal(14, 4)   // VES por USD al momento de la venta
+  amountVes       Decimal? @db.Decimal(14, 2)   // equivalente cobrado en bolivares
+
+  // Status
+  status          SaleStatus @default(PENDING)
+  paymentMethod   PaymentMethod?
+  paymentProof    String?
+  paymentReference String?
+  paidAt          DateTime?
+
+  // Receipt
+  receiptNumber   String @unique
+  receiptUrl      String?
+  receiptSent     Boolean @default(false)
+  receiptSentAt   DateTime?
+
+  // Notifications
+  whatsappSent    Boolean @default(false)
+  whatsappSentAt  DateTime?
+  emailSent       Boolean @default(false)
+  emailSentAt     DateTime?
+  smsSent         Boolean @default(false)
+  smsSentAt       DateTime?
+
+  // Source tracking
+  source          String?
+  campaignId      String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+
+  // Metadata
+  ipAddress       String?
+  userAgent       String?
+  deviceType      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  raffle   Raffle        @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  contact  Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  vendor   Vendor?       @relation(fields: [vendorId], references: [id])
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numbers_rel RaffleNumber[]
+  campaign Campaign?     @relation(fields: [campaignId], references: [id])
+
+  @@index([raffleId])
+  @@index([contactId])
+  @@index([userId])
+  @@index([vendorId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([campaignId])
+}
+
+// ============================================================
+// VENDORS (Red de ventas)
+// ============================================================
+
+model Vendor {
+  id     String @id @default(cuid())
+  userId String
+
+  name        String
+  phone       String
+  email       String?
+  code        String  @unique
+
+  // Commission
+  commissionRate  Decimal @default(0) @db.Decimal(5, 2)
+  commissionFixed Decimal? @db.Decimal(10, 2)
+
+  // Stats
+  totalSales      Int     @default(0)
+  totalNumbers    Int     @default(0)
+  totalEarned     Decimal @default(0) @db.Decimal(12, 2)
+  totalPaid       Decimal @default(0) @db.Decimal(12, 2)
+  totalPending    Decimal @default(0) @db.Decimal(12, 2)
+
+  // Sub-vendors
+  parentVendorId String?
+  subVendors     Vendor[] @relation("VendorHierarchy")
+  parentVendor   Vendor?  @relation("VendorHierarchy", fields: [parentVendorId], references: [id])
+
+  // Links
+  personalLink    String?
+  personalQR      String?
+
+  active     Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numbers RaffleNumber[]
+  sales   Sale[]
+
+  @@index([userId])
+  @@index([code])
+  @@index([userId, active])
+}
+
+// ============================================================
+// CAMPAIGNS (Marketing)
+// ============================================================
+
+model Campaign {
+  id     String @id @default(cuid())
+  userId String
+  raffleId String?
+
+  name        String
+  type        CampaignType
+  status      CampaignStatus @default(DRAFT)
+
+  // Content
+  subject     String?
+  message     String @db.Text
+  mediaUrls   String[]
+  ctaLink     String?
+  ctaText     String?
+
+  // Targeting
+  targetTags     String[]
+  targetAll      Boolean @default(false)
+  targetContacts String[]
+  excludeContacts String[]
+
+  // Scheduling
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  completedAt DateTime?
+
+  // Metrics
+  totalRecipients Int @default(0)
+  sentCount       Int @default(0)
+  deliveredCount  Int @default(0)
+  openedCount     Int @default(0)
+  clickedCount    Int @default(0)
+  failedCount     Int @default(0)
+  convertedCount  Int @default(0)
+  revenueGenerated Decimal @default(0) @db.Decimal(12, 2)
+
+  // Cost
+  costPerMessage Decimal? @db.Decimal(10, 4)
+  totalCost      Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  raffle Raffle? @relation(fields: [raffleId], references: [id])
+  sales  Sale[]
+
+  @@index([userId])
+  @@index([raffleId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+// ============================================================
+// SUBSCRIPTIONS & BILLING
+// ============================================================
+
+model Subscription {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  plan    Plan @default(FREE)
+  status  SubscriptionStatus @default(TRIAL)
+
+  // Trial
+  trialEndsAt DateTime?
+
+  // Billing
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+
+  cancelAtPeriodEnd Boolean @default(false)
+  cancelledAt       DateTime?
+
+  // Limits
+  maxRaffles    Int @default(1)
+  maxContacts   Int @default(50)
+  maxVendors    Int @default(0)
+  maxNumbers    Int @default(100)
+  maxCampaignsPerMonth Int @default(0)
+
+  // Usage tracking
+  rafflesUsed   Int @default(0)
+  contactsUsed  Int @default(0)
+  vendorsUsed   Int @default(0)
+  numbersUsed   Int @default(0)
+  campaignsUsed Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
+  @@index([status])
+}
+
+// ============================================================
+// ACTIVITY LOGS
+// ============================================================
+
+model ActivityLog {
+  id     String @id @default(cuid())
+  userId String
+
+  action    String
+  entityType String?
+  entityId   String?
+
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+// ============================================================
+// AUTOMATION RULES
+// ============================================================
+
+model AutomationRule {
+  id     String @id @default(cuid())
+  userId String
+
+  name        String
+  description String?
+  active      Boolean @default(true)
+
+  trigger     String
+  triggerConfig Json?
+
+  conditions  Json?
+  actions     Json
+
+  triggeredCount Int @default(0)
+  executedCount  Int @default(0)
+  lastTriggered  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([active])
+}
+
+// ============================================================
+// TEMPLATES
+// ============================================================
+
+model Template {
+  id     String @id @default(cuid())
+  userId String?
+
+  name        String
+  type        String
+  category    String
+
+  content     String @db.Text
+  variables   String[]
+
+  imageTemplate String?
+
+  isPublic    Boolean @default(false)
+  isDefault   Boolean @default(false)
+
+  usageCount  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([category])
+}
+
+
+// ============================================================
+// Tasa de cambio USD <-> VES (localizacion Venezuela)
+// ============================================================
+model ExchangeRate {
+  id        String     @id @default(cuid())
+  userId    String
+  source    RateSource @default(BCV)
+  vesPerUsd Decimal    @db.Decimal(14, 4)
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([userId, source])
+}

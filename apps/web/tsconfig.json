@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@riffas/api": ["../../packages/api/src"],
+      "@riffas/auth": ["../../packages/auth/src"],
+      "@riffas/db": ["../../packages/db/src"],
+      "@riffas/shared": ["../../packages/shared/src"],
+      "@riffas/shared/receipt": ["../../packages/shared/src/receipt"]
+    },
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@riffas/api",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "clean": "rm -rf .turbo node_modules"
+  },
+  "dependencies": {
+    "@riffas/db": "workspace:*",
+    "@riffas/auth": "workspace:*",
+    "@riffas/shared": "workspace:*",
+    "@trpc/server": "^10.45.0",
+    "@trpc/client": "^10.45.0",
+    "@trpc/react-query": "^10.45.0",
+    "@trpc/next": "^10.45.0",
+    "bcryptjs": "^2.4.3",
+    "superjson": "^2.2.0",
+    "zod": "^3.22.0",
+    "stripe": "^14.8.0",
+    "resend": "^2.0.0",
+    "twilio": "^4.20.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "typescript": "^5.3.0"
+  }
+}
