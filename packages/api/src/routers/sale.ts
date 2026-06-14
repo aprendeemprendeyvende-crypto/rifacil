@@ -1,11 +1,28 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-import { generateReceipt } from "@riffas/shared/receipt";
 import { PaymentMethod } from "@riffas/db";
 
 // Redondeo a 2 decimales para montos de dinero.
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Carga DIFERIDA del generador de recibos. receipt.ts importa satori + @resvg/resvg-js
+// (binarios nativos) en su top-level. Si se importa en el top-level de este router,
+// cargar appRouter arrastra el binario nativo y —si no quedó trazado en el lambda de
+// Vercel— TODA la API tRPC crashea al iniciar ("Cannot find module ...resvg..."), lo que
+// tumbaba rifas, contactos, vendedores, etc. Lo importamos solo al generar el recibo y
+// toleramos el fallo: la venta/abono se guarda aunque el recibo no se pueda renderizar.
+type ReceiptArgs = Parameters<typeof import("@riffas/shared/receipt")["generateReceipt"]>[0];
+
+async function safeGenerateReceipt(args: ReceiptArgs): Promise<string | null> {
+  try {
+    const { generateReceipt } = await import("@riffas/shared/receipt");
+    return await generateReceipt(args);
+  } catch (err) {
+    console.error("[sale] generateReceipt falló; la venta se guardó sin recibo:", err);
+    return null;
+  }
+}
 
 // La marca del rifero NO viaja en la sesión (solo id/name/email/image), así que
 // la leemos de la DB para que el recibo aplique nombre/color/logo correctos.
@@ -212,7 +229,7 @@ export const saleRouter = createTRPCRouter({
         },
       });
 
-      const receiptUrl = await generateReceipt({
+      const receiptUrl = await safeGenerateReceipt({
         sale, // incluye amountPaid => el recibo muestra Valor total / Abonado / Deuda reales
         raffle,
         contact: sale.contact,
@@ -313,7 +330,7 @@ export const saleRouter = createTRPCRouter({
       });
 
       // Regenerar el recibo con los montos reales actualizados (overwrite en Cloudinary).
-      const receiptUrl = await generateReceipt({
+      const receiptUrl = await safeGenerateReceipt({
         sale: updated,
         raffle: updated.raffle,
         contact: updated.contact,
