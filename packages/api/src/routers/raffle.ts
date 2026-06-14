@@ -533,6 +533,113 @@ export const raffleRouter = createTRPCRouter({
       return stats;
     }),
 
+  // Reporte completo de una rifa: dinero (recaudado/facturado/por cobrar),
+  // números por estado, % vendido, top clientes y ventas por vendedor. Multi-tenant.
+  getReport: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { prisma, session } = ctx;
+
+      const raffle = await prisma.raffle.findFirst({
+        where: { id: input.id, userId: session.user.id },
+        select: { id: true, title: true },
+      });
+      if (!raffle) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Conteo de números por estado.
+      const grouped = await prisma.raffleNumber.groupBy({
+        by: ["status"],
+        where: { raffleId: raffle.id },
+        _count: { _all: true },
+      });
+      const byStatus: Record<string, number> = { AVAILABLE: 0, RESERVED: 0, SOLD: 0, PAID: 0 };
+      for (const g of grouped) byStatus[g.status] = g._count._all;
+      const totalNumbers = Object.values(byStatus).reduce((a, b) => a + b, 0);
+      const soldCount = byStatus.SOLD + byStatus.PAID;
+      const soldPct = totalNumbers > 0 ? Math.round((soldCount / totalNumbers) * 1000) / 10 : 0;
+
+      // Ventas activas (no canceladas) con su cliente y vendedor.
+      const sales = await prisma.sale.findMany({
+        where: { raffleId: raffle.id, status: { notIn: ["CANCELLED", "REFUNDED"] } },
+        select: {
+          contactId: true,
+          vendorId: true,
+          finalAmount: true,
+          amountPaid: true,
+          totalNumbers: true,
+          contact: { select: { id: true, name: true, phone: true } },
+          vendor: { select: { id: true, name: true, lastName: true } },
+        },
+      });
+
+      let billed = 0;
+      let collected = 0;
+      const clientMap = new Map<string, { id: string; name: string; phone: string; collected: number; numbers: number }>();
+      const vendorMap = new Map<string, { id: string; name: string; collected: number; numbers: number; salesCount: number }>();
+
+      for (const s of sales) {
+        const fa = Number(s.finalAmount);
+        const ap = Number(s.amountPaid);
+        billed += fa;
+        collected += ap;
+
+        if (s.contact) {
+          const c = clientMap.get(s.contact.id) ?? {
+            id: s.contact.id,
+            name: s.contact.name,
+            phone: s.contact.phone,
+            collected: 0,
+            numbers: 0,
+          };
+          c.collected += ap;
+          c.numbers += s.totalNumbers;
+          clientMap.set(s.contact.id, c);
+        }
+
+        if (s.vendor) {
+          const vName = `${s.vendor.name}${s.vendor.lastName ? ` ${s.vendor.lastName}` : ""}`;
+          const v = vendorMap.get(s.vendor.id) ?? {
+            id: s.vendor.id,
+            name: vName,
+            collected: 0,
+            numbers: 0,
+            salesCount: 0,
+          };
+          v.collected += ap;
+          v.numbers += s.totalNumbers;
+          v.salesCount += 1;
+          vendorMap.set(s.vendor.id, v);
+        }
+      }
+
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const pending = Math.max(0, round2(billed - collected));
+
+      const topClients = [...clientMap.values()]
+        .map((c) => ({ ...c, collected: round2(c.collected) }))
+        .sort((a, b) => b.collected - a.collected)
+        .slice(0, 10);
+
+      const byVendor = [...vendorMap.values()]
+        .map((v) => ({ ...v, collected: round2(v.collected) }))
+        .sort((a, b) => b.collected - a.collected);
+
+      return {
+        raffleTitle: raffle.title,
+        totals: {
+          numbers: totalNumbers,
+          available: byStatus.AVAILABLE,
+          reserved: byStatus.RESERVED,
+          sold: byStatus.SOLD,
+          paid: byStatus.PAID,
+          soldPct,
+        },
+        money: { billed: round2(billed), collected: round2(collected), pending },
+        topClients,
+        byVendor,
+      };
+    }),
+
   // Actualizar rifa
   update: protectedProcedure
     .input(

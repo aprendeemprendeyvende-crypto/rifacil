@@ -6,6 +6,7 @@ import { toast } from "react-hot-toast";
 import { ArrowLeft, Loader2, Play, Pause, Trash2 } from "lucide-react";
 import { NumberBoard } from "@/components/number-board";
 import { PrizesManager } from "@/components/prizes-manager";
+import { ReportSection } from "@/components/report-section";
 
 export default function RaffleDetailPage() {
   const params = useParams<{ id: string }>();
@@ -123,6 +124,8 @@ export default function RaffleDetailPage() {
         <Row label="Valor del premio" value={`$${Number(raffle.prizeValue)}`} />
         <Row label="Reservados" value={String(stats?.reserved ?? "—")} />
       </div>
+
+      <ReportSection raffleId={id} />
 
       <PrizesManager raffleId={id} />
 
