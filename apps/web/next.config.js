@@ -19,6 +19,21 @@ const nextConfig = {
     // incluya el binario nativo de resvg (vive en ../../node_modules/.pnpm/...)
     // dentro del bundle de la función serverless.
     outputFileTracingRoot: path.join(__dirname, "../../"),
+    // El cliente Prisma se genera en un output custom (packages/db/src/generated).
+    // node-file-trace NO incluye el query engine nativo (.so.node) porque Prisma lo
+    // carga por una ruta computada en runtime. Lo incluimos explícitamente en las
+    // funciones que tocan la DB (login NextAuth + tRPC) para que el engine de Linux
+    // (rhel-openssl-3.0.x) viaje dentro del bundle serverless. Globs relativos a apps/web.
+    outputFileTracingIncludes: {
+      "/api/auth/[...nextauth]/route": [
+        "../../packages/db/src/generated/**/*.node",
+        "../../packages/db/src/generated/schema.prisma",
+      ],
+      "/api/trpc/[trpc]/route": [
+        "../../packages/db/src/generated/**/*.node",
+        "../../packages/db/src/generated/schema.prisma",
+      ],
+    },
   },
   webpack: (config, { isServer }) => {
     if (isServer) {

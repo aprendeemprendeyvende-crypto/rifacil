@@ -2,6 +2,10 @@ generator client {
   provider        = "prisma-client-js"
   output          = "../src/generated"
   previewFeatures = ["postgresqlExtensions"]
+  // "native" = engine para dev local (Windows). "rhel-openssl-3.0.x" = engine de
+  // Linux que usan las funciones serverless de Vercel. Sin esto, en producción el
+  // cliente no encuentra su query engine y Prisma crashea al inicializar.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
