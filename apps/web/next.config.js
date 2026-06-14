@@ -1,4 +1,5 @@
 const path = require("path");
+const { PrismaPlugin } = require("@prisma/nextjs-monorepo-workaround-plugin");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -19,26 +20,18 @@ const nextConfig = {
     // incluya el binario nativo de resvg (vive en ../../node_modules/.pnpm/...)
     // dentro del bundle de la función serverless.
     outputFileTracingRoot: path.join(__dirname, "../../"),
-    // El cliente Prisma se genera en un output custom (packages/db/src/generated).
-    // node-file-trace NO incluye el query engine nativo (.so.node) porque Prisma lo
-    // carga por una ruta computada en runtime. Lo incluimos explícitamente en las
-    // funciones que tocan la DB (login NextAuth + tRPC) para que el engine de Linux
-    // (rhel-openssl-3.0.x) viaje dentro del bundle serverless. Globs relativos a apps/web.
-    outputFileTracingIncludes: {
-      "/api/auth/[...nextauth]/route": [
-        "../../packages/db/src/generated/**/*.node",
-        "../../packages/db/src/generated/schema.prisma",
-      ],
-      "/api/trpc/[trpc]/route": [
-        "../../packages/db/src/generated/**/*.node",
-        "../../packages/db/src/generated/schema.prisma",
-      ],
-    },
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // resvg trae binarios .node que webpack no puede parsear; se requieren en runtime.
       config.externals.push("@resvg/resvg-js");
+      // Prisma + monorepo + output custom (packages/db/src/generated): el query engine
+      // nativo (libquery_engine-rhel-openssl-3.0.x.so.node) no quedaba junto al bundle,
+      // así que en runtime Prisma no lo encontraba y crasheaba al inicializar (login).
+      // Este plugin oficial copia el engine + schema dentro de .next/server (ruta que
+      // Prisma SÍ busca en runtime) y reescribe las rutas. Requiere binaryTargets con
+      // rhel-openssl-3.0.x en schema.prisma para que ese engine se genere en el build.
+      config.plugins = [...config.plugins, new PrismaPlugin()];
     }
     return config;
   },

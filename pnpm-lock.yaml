@@ -81,6 +81,9 @@ importers:
         specifier: ^2.2.0
         version: 2.6.1
     devDependencies:
+      '@prisma/nextjs-monorepo-workaround-plugin':
+        specifier: 5.22.0
+        version: 5.22.0
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.43
@@ -683,6 +686,10 @@ packages:
     dependencies:
       '@prisma/debug': 5.22.0
     dev: false
+
+  /@prisma/nextjs-monorepo-workaround-plugin@5.22.0:
+    resolution: {integrity: sha512-wuKp7FqhETHP2MJJu5y//ac83/EpDpoupcjlmp/Ijv3fnG576EIxY4SU4j24xXPIBOTuApkCk4RkgonkeAOXuQ==}
+    dev: true
 
   /@react-email/render@0.0.9:
     resolution: {integrity: sha512-nrim7wiACnaXsGtL7GF6jp3Qmml8J6vAjAH88jkC8lIbfNZaCyuPQHANjyYIXlvQeAbsWADQJFZgOHUqFqjh/A==}
