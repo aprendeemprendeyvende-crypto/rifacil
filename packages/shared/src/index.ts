@@ -4,3 +4,4 @@
 // "@riffas/shared/receipt" (solo en código de servidor: Server Actions, routers, workers).
 export * from "./phone";
 export * from "./google-contacts";
+export * from "./numbers";
