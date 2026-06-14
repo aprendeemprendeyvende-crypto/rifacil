@@ -245,6 +245,52 @@ export const raffleRouter = createTRPCRouter({
       return raffle;
     }),
 
+  // Eliminar rifa (multi-tenant: solo rifas del usuario en sesión).
+  // Protege los datos: si hay ventas registradas NO borra en duro; bloquea.
+  // Sin ventas (rifas de prueba) -> borrado en duro, los números caen por cascade.
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { prisma, session } = ctx;
+
+      // Verificar propiedad (multi-tenant).
+      const raffle = await prisma.raffle.findFirst({
+        where: { id: input.id, userId: session.user.id },
+        select: { id: true, totalNumbers: true },
+      });
+      if (!raffle) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Rifa no encontrada" });
+      }
+
+      // ¿Tiene ventas o números vendidos/pagados? -> no se puede borrar.
+      const [salesCount, soldNumbers] = await Promise.all([
+        prisma.sale.count({ where: { raffleId: raffle.id } }),
+        prisma.raffleNumber.count({
+          where: { raffleId: raffle.id, status: { in: ["SOLD", "PAID"] } },
+        }),
+      ]);
+      if (salesCount > 0 || soldNumbers > 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "No puedes eliminar una rifa con ventas registradas",
+        });
+      }
+
+      // Borrado en duro. RaffleNumber tiene onDelete: Cascade.
+      await prisma.raffle.delete({ where: { id: raffle.id } });
+
+      // Liberar uso del plan (no baja de 0 en la práctica; simétrico al create).
+      await prisma.subscription.updateMany({
+        where: { userId: session.user.id },
+        data: {
+          rafflesUsed: { decrement: 1 },
+          numbersUsed: { decrement: raffle.totalNumbers },
+        },
+      });
+
+      return { success: true };
+    }),
+
   // Realizar sorteo
   draw: protectedProcedure
     .input(
@@ -394,16 +440,6 @@ export const raffleRouter = createTRPCRouter({
         data: input.data,
       });
       return raffle;
-    }),
-
-  // Eliminar rifa
-  delete: protectedProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      await ctx.prisma.raffle.delete({
-        where: { id: input.id, userId: ctx.session.user.id },
-      });
-      return { success: true };
     }),
 });
 

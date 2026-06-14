@@ -1,13 +1,16 @@
 "use client";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/trpc";
 import { toast } from "react-hot-toast";
-import { ArrowLeft, Loader2, Play, Pause } from "lucide-react";
+import { ArrowLeft, Loader2, Play, Pause, Trash2 } from "lucide-react";
 
 export default function RaffleDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const utils = api.useContext();
   const id = params.id;
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { data: raffle, isLoading, refetch } = api.raffle.getById.useQuery(
     { id },
@@ -26,6 +29,15 @@ export default function RaffleDetailPage() {
     onSuccess: () => {
       toast.success("Rifa pausada");
       refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteRaffle = api.raffle.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Rifa eliminada");
+      setConfirmDelete(false);
+      utils.raffle.list.invalidate();
+      router.push("/dashboard/raffles");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -89,6 +101,12 @@ export default function RaffleDetailPage() {
             <Pause className="w-4 h-4" /> Pausar
           </button>
         )}
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 rounded-xl hover:bg-red-50"
+        >
+          <Trash2 className="w-4 h-4" /> Eliminar
+        </button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -103,6 +121,33 @@ export default function RaffleDetailPage() {
         <Row label="Valor del premio" value={`$${Number(raffle.prizeValue)}`} />
         <Row label="Reservados" value={String(stats?.reserved ?? "—")} />
       </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+          <div className="w-full space-y-4 rounded-t-2xl border bg-white p-6 sm:max-w-md sm:rounded-2xl">
+            <h2 className="text-lg font-bold text-slate-900">¿Eliminar esta rifa?</h2>
+            <p className="text-sm text-slate-600">
+              Vas a eliminar <span className="font-medium text-slate-900">{raffle.title}</span>. No se puede deshacer.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleteRaffle.isLoading}
+                className="flex-1 py-3 rounded-xl border border-slate-300 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteRaffle.mutate({ id })}
+                disabled={deleteRaffle.isLoading}
+                className="flex-1 py-3 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deleteRaffle.isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
