@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { VendorRole } from "@riffas/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { normalizePhone } from "@riffas/shared";
@@ -20,6 +21,7 @@ export const vendorRouter = createTRPCRouter({
         .object({
           search: z.string().optional(),
           activeOnly: z.boolean().optional(),
+          role: z.enum(["ALL", "VENDEDOR", "ADMIN"]).optional(),
         })
         .optional()
     )
@@ -27,9 +29,12 @@ export const vendorRouter = createTRPCRouter({
       const { prisma, session } = ctx;
       const where: any = { userId: session.user.id };
       if (input?.activeOnly) where.active = true;
+      if (input?.role && input.role !== "ALL") where.role = input.role;
       if (input?.search) {
         where.OR = [
           { name: { contains: input.search, mode: "insensitive" } },
+          { lastName: { contains: input.search, mode: "insensitive" } },
+          { idDocument: { contains: input.search, mode: "insensitive" } },
           { code: { contains: input.search, mode: "insensitive" } },
           { phone: { contains: input.search } },
         ];
@@ -60,8 +65,11 @@ export const vendorRouter = createTRPCRouter({
     .input(
       z.object({
         name: z.string().min(2, "Nombre muy corto"),
+        lastName: z.string().optional().or(z.literal("")),
+        idDocument: z.string().optional().or(z.literal("")),
         phone: z.string().min(7, "Teléfono inválido"),
         email: z.string().email().optional().or(z.literal("")),
+        role: z.nativeEnum(VendorRole).default(VendorRole.VENDEDOR),
         commissionRate: z.number().min(0).max(100).default(0),
         code: z.string().optional(),
       })
@@ -102,8 +110,11 @@ export const vendorRouter = createTRPCRouter({
         data: {
           userId: session.user.id,
           name: input.name,
+          lastName: input.lastName || null,
+          idDocument: input.idDocument || null,
           phone,
           email: input.email || null,
+          role: input.role,
           commissionRate: input.commissionRate,
           code,
         },
@@ -118,8 +129,11 @@ export const vendorRouter = createTRPCRouter({
         id: z.string(),
         data: z.object({
           name: z.string().min(2).optional(),
+          lastName: z.string().optional().nullable(),
+          idDocument: z.string().optional().nullable(),
           phone: z.string().min(7).optional(),
-          email: z.string().email().optional().nullable(),
+          email: z.string().email().optional().nullable().or(z.literal("")),
+          role: z.nativeEnum(VendorRole).optional(),
           commissionRate: z.number().min(0).max(100).optional(),
           active: z.boolean().optional(),
         }),
@@ -127,6 +141,10 @@ export const vendorRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const data: any = { ...input.data };
+      // Normalizar strings opcionales: "" -> null para campos nullable.
+      if (data.lastName === "") data.lastName = null;
+      if (data.idDocument === "") data.idDocument = null;
+      if (data.email === "") data.email = null;
       if (input.data.phone) {
         const phone = normalizePhone(input.data.phone, "VE");
         if (!phone) {

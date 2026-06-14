@@ -564,14 +564,22 @@ model Payment {
 // VENDORS (Red de ventas)
 // ============================================================
 
+enum VendorRole {
+  VENDEDOR
+  ADMIN
+}
+
 model Vendor {
   id     String @id @default(cuid())
   userId String
 
   name        String
+  lastName    String?     // apellido
+  idDocument  String?     // cédula / identificación
   phone       String
   email       String?
   code        String  @unique
+  role        VendorRole @default(VENDEDOR)
 
   // Commission
   commissionRate  Decimal @default(0) @db.Decimal(5, 2)
