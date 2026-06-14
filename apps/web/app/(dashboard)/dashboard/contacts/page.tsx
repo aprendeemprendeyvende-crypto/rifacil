@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { api } from "@/lib/trpc";
+import { toast } from "react-hot-toast";
 import { parseGoogleContacts, type ParseResult } from "@riffas/shared";
 import { Plus, Upload, Check, X } from "lucide-react";
 
@@ -8,13 +9,33 @@ export default function ContactsPage() {
   const { data, refetch } = api.contact.list.useQuery({ limit: 50 });
   const [preview, setPreview] = useState<ParseResult | null>(null);
   const [fileName, setFileName] = useState<string>("");
+  const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+
+  const createContact = api.contact.create.useMutation({
+    onSuccess: () => {
+      toast.success("Contacto agregado");
+      setNewOpen(false);
+      setNewName("");
+      setNewPhone("");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const importCSV = api.contact.importCSV.useMutation({
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const parts = [`${res.imported} nuevos`];
+      if (res.updated) parts.push(`${res.updated} actualizados`);
+      if (res.skipped) parts.push(`${res.skipped} omitidos`);
+      if (res.errors.length) parts.push(`${res.errors.length} con error`);
+      toast.success(`Importación lista: ${parts.join(", ")}`);
       setPreview(null);
       setFileName("");
       refetch();
     },
+    onError: (e) => toast.error(e.message || "No se pudo importar"),
   });
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -57,7 +78,10 @@ export default function ContactsPage() {
               onChange={handleFile}
             />
           </label>
-          <button className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white">
+          <button
+            onClick={() => setNewOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+          >
             <Plus className="h-5 w-5" /> Nuevo
           </button>
         </div>
@@ -142,6 +166,61 @@ export default function ContactsPage() {
           </tbody>
         </table>
       </div>
+      {newOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+          <div className="w-full space-y-4 rounded-t-2xl border bg-white p-6 sm:max-w-md sm:rounded-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900">Nuevo contacto</h2>
+              <button
+                onClick={() => setNewOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600"
+                aria-label="Cerrar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newName.trim() || !newPhone.trim()) {
+                  toast.error("Completa nombre y teléfono");
+                  return;
+                }
+                createContact.mutate({ name: newName.trim(), phone: newPhone.trim() });
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Nombre</label>
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+                  placeholder="Ej: Carlos Rodríguez"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">WhatsApp</label>
+                <input
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+                  placeholder="0424..."
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={createContact.isLoading}
+                className="w-full rounded-xl bg-blue-600 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {createContact.isLoading ? "Guardando…" : "Agregar contacto"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

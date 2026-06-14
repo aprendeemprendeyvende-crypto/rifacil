@@ -4,14 +4,22 @@
 
 :root {
   --background: #f8fafc;
-  --foreground: #0f172a;
+  --foreground: #0f172a; /* slate-900 */
+  --muted-foreground: #334155; /* slate-700 (labels) */
+  --placeholder: #94a3b8; /* slate-400 */
+  --card: #ffffff;
+  --border: #e2e8f0; /* slate-200 */
+  /*
+   * La UI está diseñada en claro: tarjetas blancas + variantes `dark:` de Tailwind
+   * en modo "class" que nunca se activan. Forzamos esquema claro para que iOS Safari
+   * NO repinte inputs/controles en oscuro (causa de "no se ve lo que escribes").
+   */
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #020617;
-    --foreground: #f1f5f9;
-  }
+html {
+  color-scheme: light;
+  background: var(--background);
 }
 
 html,
@@ -28,4 +36,41 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/*
+ * Contraste definitivo de formularios — robusto en modo claro Y oscuro del celular.
+ * En iOS Safari `color` no alcanza: el sistema usa `-webkit-text-fill-color` para
+ * forzar texto claro en modo oscuro y en autofill, así que lo fijamos también.
+ */
+input,
+textarea,
+select {
+  color: var(--foreground);
+  -webkit-text-fill-color: var(--foreground);
+  background-color: #ffffff;
+  caret-color: var(--foreground);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--placeholder);
+  -webkit-text-fill-color: var(--placeholder);
+  opacity: 1; /* Firefox baja la opacidad de los placeholders por defecto. */
+}
+
+/* Autofill de Chrome/iOS pinta fondo y texto propios: lo neutralizamos. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+  box-shadow: 0 0 0px 1000px #ffffff inset;
+}
+
+/* Labels legibles aunque la página no les ponga color explícito. */
+label {
+  color: var(--muted-foreground);
 }

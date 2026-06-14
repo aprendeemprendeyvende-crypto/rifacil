@@ -4,11 +4,17 @@ import { useState } from "react";
 import { toast } from "react-hot-toast";
 
 export default function SettingsPage() {
-  const { data: settings } = api.settings.get.useQuery();
+  const { data: settings, refetch } = api.settings.get.useQuery();
   const updateSettings = api.settings.update.useMutation({
-    onSuccess: () => toast.success("Configuracion actualizada"),
+    onSuccess: () => {
+      toast.success("Configuración actualizada");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
   });
-  const [theme, setTheme] = useState(settings?.theme || "system");
+  // El resaltado sigue al valor guardado; `override` aplica el clic al instante.
+  const [override, setOverride] = useState<string | null>(null);
+  const theme = override ?? settings?.theme ?? "system";
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -19,7 +25,7 @@ export default function SettingsPage() {
           <label className="block text-sm font-medium mb-2">Tema</label>
           <div className="flex gap-2">
             {["light", "dark", "system"].map((t) => (
-              <button key={t} onClick={() => { setTheme(t); updateSettings.mutate({ theme: t as any }); }}
+              <button key={t} onClick={() => { setOverride(t); updateSettings.mutate({ theme: t as any }); }}
                 className={`px-4 py-2 rounded-lg border ${theme === t ? "bg-blue-600 text-white border-blue-600" : "hover:bg-slate-50"}`}>
                 {t === "light" ? "Claro" : t === "dark" ? "Oscuro" : "Sistema"}
               </button>

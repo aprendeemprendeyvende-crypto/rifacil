@@ -6,8 +6,9 @@ import { createTRPCContext } from "@riffas/api/src/trpc";
 // El recibo usa @resvg/resvg-js (binario nativo) → runtime Node, NUNCA edge.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Render del recibo (satori → png) + upload a Cloudinary puede tardar unos segundos.
-export const maxDuration = 30;
+// Render del recibo (satori → png) + upload a Cloudinary, y la importación masiva
+// de contactos (miles de filas), pueden tardar varios segundos.
+export const maxDuration = 60;
 
 const handler = (req: NextRequest) =>
   fetchRequestHandler({

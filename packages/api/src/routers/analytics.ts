@@ -32,4 +32,27 @@ export const analyticsRouter = createTRPCRouter({
       pending,
     };
   }),
+
+  // Tarjetas de la pantalla /dashboard/analytics.
+  dashboard: protectedProcedure.query(async ({ ctx }) => {
+    const { prisma, session } = ctx;
+    const userId = session.user.id;
+
+    const [salesAgg, totalContacts, totalRaffles] = await Promise.all([
+      prisma.sale.aggregate({
+        where: { userId, status: { notIn: ["CANCELLED", "REFUNDED"] } },
+        _sum: { finalAmount: true },
+        _count: true,
+      }),
+      prisma.contact.count({ where: { userId } }),
+      prisma.raffle.count({ where: { userId, status: { not: "CANCELLED" } } }),
+    ]);
+
+    return {
+      totalSales: salesAgg._count,
+      totalRevenue: Number(salesAgg._sum.finalAmount ?? 0),
+      totalContacts,
+      totalRaffles,
+    };
+  }),
 });

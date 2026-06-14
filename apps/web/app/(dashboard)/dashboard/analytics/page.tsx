@@ -2,7 +2,7 @@
 import { api } from "@/lib/trpc";
 
 export default function AnalyticsPage() {
-  const { data } = api.analytics.dashboard.useQuery({});
+  const { data } = api.analytics.dashboard.useQuery();
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Analytics</h1>

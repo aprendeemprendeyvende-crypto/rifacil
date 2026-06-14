@@ -1,6 +1,163 @@
-import { createTRPCRouter, publicProcedure } from "../trpc";
+import { z } from "zod";
+import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { normalizePhone } from "@riffas/shared";
 
-// TODO Fase 2: vendedores (comisiones + recaudo por vendedor, jerarquía, links/QR).
+// Genera un código corto y legible a partir del nombre (p. ej. "Juan Pérez" -> "JUAN").
+function baseCodeFromName(name: string): string {
+  // NFD descompone acentos (á -> a +  ́); el filtro alfanumérico borra las marcas.
+  const clean = name
+    .normalize("NFD")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+  return (clean.slice(0, 5) || "VEND");
+}
+
 export const vendorRouter = createTRPCRouter({
-  health: publicProcedure.query(() => "ok"),
+  list: protectedProcedure
+    .input(
+      z
+        .object({
+          search: z.string().optional(),
+          activeOnly: z.boolean().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const { prisma, session } = ctx;
+      const where: any = { userId: session.user.id };
+      if (input?.activeOnly) where.active = true;
+      if (input?.search) {
+        where.OR = [
+          { name: { contains: input.search, mode: "insensitive" } },
+          { code: { contains: input.search, mode: "insensitive" } },
+          { phone: { contains: input.search } },
+        ];
+      }
+
+      const vendors = await prisma.vendor.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+      });
+
+      return { vendors };
+    }),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const vendor = await ctx.prisma.vendor.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id },
+        include: {
+          _count: { select: { sales: true, numbers: true } },
+        },
+      });
+      if (!vendor) throw new TRPCError({ code: "NOT_FOUND" });
+      return vendor;
+    }),
+
+  create: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(2, "Nombre muy corto"),
+        phone: z.string().min(7, "Teléfono inválido"),
+        email: z.string().email().optional().or(z.literal("")),
+        commissionRate: z.number().min(0).max(100).default(0),
+        code: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { prisma, session } = ctx;
+
+      const phone = normalizePhone(input.phone, "VE");
+      if (!phone) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Teléfono inválido" });
+      }
+
+      // Verificar límite de vendedores del plan.
+      const sub = await prisma.subscription.findUnique({
+        where: { userId: session.user.id },
+      });
+      if (sub) {
+        const count = await prisma.vendor.count({ where: { userId: session.user.id } });
+        if (count >= sub.maxVendors) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Tu plan permite máximo ${sub.maxVendors} vendedores.`,
+          });
+        }
+      }
+
+      // `code` es único a nivel global → generamos uno disponible.
+      let code = (input.code || baseCodeFromName(input.name)).toUpperCase();
+      const base = baseCodeFromName(input.name);
+      // Si el code pedido/derivado ya existe, agregamos sufijo numérico.
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const exists = await prisma.vendor.findUnique({ where: { code } });
+        if (!exists) break;
+        code = `${base}${Math.floor(10 + attempt * 7 + attempt)}`;
+      }
+
+      const vendor = await prisma.vendor.create({
+        data: {
+          userId: session.user.id,
+          name: input.name,
+          phone,
+          email: input.email || null,
+          commissionRate: input.commissionRate,
+          code,
+        },
+      });
+
+      return vendor;
+    }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        data: z.object({
+          name: z.string().min(2).optional(),
+          phone: z.string().min(7).optional(),
+          email: z.string().email().optional().nullable(),
+          commissionRate: z.number().min(0).max(100).optional(),
+          active: z.boolean().optional(),
+        }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const data: any = { ...input.data };
+      if (input.data.phone) {
+        const phone = normalizePhone(input.data.phone, "VE");
+        if (!phone) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Teléfono inválido" });
+        }
+        data.phone = phone;
+      }
+      // Asegurar pertenencia (multi-tenant) antes de actualizar.
+      const owned = await ctx.prisma.vendor.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id },
+        select: { id: true },
+      });
+      if (!owned) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const vendor = await ctx.prisma.vendor.update({
+        where: { id: input.id },
+        data,
+      });
+      return vendor;
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const owned = await ctx.prisma.vendor.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id },
+        select: { id: true },
+      });
+      if (!owned) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await ctx.prisma.vendor.delete({ where: { id: input.id } });
+      return { success: true };
+    }),
 });

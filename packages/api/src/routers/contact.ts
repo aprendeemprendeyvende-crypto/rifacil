@@ -228,7 +228,9 @@ export const contactRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { prisma, session } = ctx;
-      const { data, skipDuplicates, updateExisting } = input;
+      const { data, updateExisting } = input;
+      const userId = session.user.id;
+      const now = new Date();
 
       const results = {
         total: data.length,
@@ -238,62 +240,101 @@ export const contactRouter = createTRPCRouter({
         errors: [] as Array<{ row: number; error: string }>,
       };
 
+      // 1) Normalizar y deduplicar el lote entrante por teléfono (E.164).
+      //    Importar miles de filas con un find+write por fila satura la función
+      //    serverless (timeout). En su lugar: 1 lectura de existentes + createMany.
+      const byPhone = new Map<
+        string,
+        { name: string; phone: string; country: string; email?: string | null; city?: string | null; tags: string[]; notes?: string | null }
+      >();
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
-        try {
-          const normalizedPhone = normalizePhone(row.phone, "VE");
-          if (!normalizedPhone) {
-            results.errors.push({ row: i + 1, error: "Teléfono inválido" });
-            continue;
-          }
-          const country = countryFromE164(normalizedPhone);
+        const phone = normalizePhone(row.phone, "VE");
+        if (!phone) {
+          results.errors.push({ row: i + 1, error: "Teléfono inválido" });
+          continue;
+        }
+        // El último gana (consolida duplicados dentro del archivo).
+        byPhone.set(phone, {
+          name: row.name,
+          phone,
+          country: countryFromE164(phone),
+          email: row.email ?? null,
+          city: row.city ?? null,
+          tags: row.tags ?? [],
+          notes: row.notes ?? null,
+        });
+      }
 
-          const existing = await prisma.contact.findFirst({
-            where: { userId: session.user.id, phone: normalizedPhone },
+      // 2) Una sola query para saber qué teléfonos ya existen.
+      const existing = await prisma.contact.findMany({
+        where: { userId },
+        select: { id: true, phone: true, tags: true },
+      });
+      const existingByPhone = new Map(existing.map((c) => [c.phone, c]));
+
+      const toCreate: any[] = [];
+      const toUpdate: Array<{ id: string; row: ReturnType<typeof byPhone.get>; prevTags: string[] }> = [];
+
+      for (const [phone, row] of byPhone) {
+        const hit = existingByPhone.get(phone);
+        if (hit) {
+          if (updateExisting) toUpdate.push({ id: hit.id, row, prevTags: hit.tags });
+          else results.skipped++;
+        } else {
+          toCreate.push({
+            name: row!.name,
+            phone: row!.phone,
+            country: row!.country,
+            email: row!.email,
+            city: row!.city,
+            tags: row!.tags,
+            notes: row!.notes,
+            userId,
+            source: input.format,
+            importedFrom: input.format,
+            importedAt: now,
           });
-
-          if (existing) {
-            if (updateExisting) {
-              await prisma.contact.update({
-                where: { id: existing.id },
-                data: {
-                  name: row.name || existing.name,
-                  email: row.email || existing.email,
-                  city: row.city || existing.city,
-                  tags: row.tags ? [...new Set([...existing.tags, ...row.tags])] : undefined,
-                  importedFrom: input.format,
-                  importedAt: new Date(),
-                },
-              });
-              results.updated++;
-            } else if (skipDuplicates) {
-              results.skipped++;
-            }
-          } else {
-            await prisma.contact.create({
-              data: {
-                name: row.name,
-                phone: normalizedPhone,
-                country,
-                email: row.email,
-                city: row.city,
-                tags: row.tags || [],
-                notes: row.notes,
-                userId: session.user.id,
-                source: input.format,
-                importedFrom: input.format,
-                importedAt: new Date(),
-              },
-            });
-            results.imported++;
-          }
-        } catch (error: any) {
-          results.errors.push({ row: i + 1, error: error.message });
         }
       }
 
-      await prisma.subscription.update({
-        where: { userId: session.user.id },
+      // 3) Insertar nuevos por lotes (createMany), tolerante a carreras.
+      const BATCH = 1000;
+      for (let i = 0; i < toCreate.length; i += BATCH) {
+        const chunk = toCreate.slice(i, i + BATCH);
+        const res = await prisma.contact.createMany({ data: chunk, skipDuplicates: true });
+        results.imported += res.count;
+      }
+
+      // 4) Actualizar existentes (solo los que se solapan) con concurrencia acotada.
+      const UPDATE_CONCURRENCY = 25;
+      for (let i = 0; i < toUpdate.length; i += UPDATE_CONCURRENCY) {
+        const chunk = toUpdate.slice(i, i + UPDATE_CONCURRENCY);
+        await Promise.all(
+          chunk.map(async ({ id, row, prevTags }) => {
+            try {
+              await prisma.contact.update({
+                where: { id },
+                data: {
+                  name: row!.name || undefined,
+                  email: row!.email || undefined,
+                  city: row!.city || undefined,
+                  tags: row!.tags.length ? [...new Set([...prevTags, ...row!.tags])] : undefined,
+                  importedFrom: input.format,
+                  importedAt: now,
+                },
+              });
+              results.updated++;
+            } catch (e: any) {
+              results.errors.push({ row: 0, error: e.message });
+            }
+          })
+        );
+      }
+
+      // updateMany no lanza si el usuario aún no tiene suscripción.
+      await prisma.subscription.updateMany({
+        where: { userId },
         data: { contactsUsed: { increment: results.imported } },
       });
 

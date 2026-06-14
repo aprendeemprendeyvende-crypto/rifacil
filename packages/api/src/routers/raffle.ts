@@ -164,8 +164,8 @@ export const raffleRouter = createTRPCRouter({
         });
       }
 
-      // Actualizar uso
-      await prisma.subscription.update({
+      // Actualizar uso (updateMany no lanza si no hay suscripción todavía).
+      await prisma.subscription.updateMany({
         where: { userId: session.user.id },
         data: { rafflesUsed: { increment: 1 }, numbersUsed: { increment: input.totalNumbers } },
       });
@@ -241,7 +241,8 @@ export const raffleRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const raffle = await ctx.prisma.raffle.findFirst({
         where: {
-          brandSlug: input.slug,
+          // El slug de marca vive en el User (rifero), no en Raffle.
+          user: { brandSlug: input.slug },
           status: { in: ["ACTIVE", "SOLD_OUT", "DRAWN"] },
           isPublic: true,
         },
