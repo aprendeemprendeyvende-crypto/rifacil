@@ -66,6 +66,12 @@ export function SellNumberSheet({
     { enabled: mode === "search" && debounced.length >= 2 && !picked }
   );
 
+  // Tasa USD->VES para mostrar el equivalente en Bs.
+  const { data: rate } = api.settings.getRate.useQuery();
+  const vesPerUsd = rate ? Number(rate.vesPerUsd) : null;
+  const bs = (v: number) =>
+    vesPerUsd ? `${(v * vesPerUsd).toLocaleString("es-VE", { maximumFractionDigits: 2 })} Bs` : null;
+
   // --- Pago ---
   const [amount, setAmount] = useState(String(total));
   const [method, setMethod] = useState<(typeof METHODS)[number]>("PAGO_MOVIL");
@@ -256,7 +262,10 @@ export function SellNumberSheet({
           <div className="rounded-xl border p-4">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm text-slate-500">Valor del número</span>
-              <span className="text-sm font-semibold text-slate-900">{money(total)}</span>
+              <span className="text-right">
+                <span className="block text-sm font-semibold text-slate-900">{money(total)}</span>
+                {bs(total) && <span className="block text-xs text-slate-400">≈ {bs(total)}</span>}
+              </span>
             </div>
 
             <label className="mb-1 block text-xs font-medium text-slate-500">
@@ -285,6 +294,7 @@ export function SellNumberSheet({
               <span className={willReserve ? "font-medium text-orange-600" : "text-slate-400"}>
                 {willReserve ? `Quedará apartado · deuda ${money(debt)}` : "Se marca como vendido"}
               </span>
+              {bs(paid) && <span className="text-slate-400">≈ {bs(paid)}</span>}
             </div>
 
             <label className="mb-1 mt-4 block text-xs font-medium text-slate-500">Método</label>

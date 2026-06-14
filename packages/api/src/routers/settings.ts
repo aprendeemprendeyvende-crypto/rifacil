@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { PaymentMethod } from "@riffas/db";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { fetchBcvRate, getActiveRate, saveRate } from "../lib/exchangeRate";
 
 // Valores válidos del enum PaymentMethod de Prisma (Set para filtrado O(1)).
 const VALID_PAYMENT_METHODS = new Set<string>(Object.values(PaymentMethod));
@@ -113,5 +115,32 @@ export const settingsRouter = createTRPCRouter({
         update: data,
         create: { userId: ctx.session.user.id, method, ...data },
       });
+    }),
+
+  // --- Tasa de cambio USD <-> VES ---
+
+  getRate: protectedProcedure.query(async ({ ctx }) => {
+    return getActiveRate(ctx.prisma, ctx.session.user.id);
+  }),
+
+  // Trae la tasa del BCV y la guarda. Si la fuente falla, sugiere el override manual.
+  refreshRate: protectedProcedure.mutation(async ({ ctx }) => {
+    let rate: number;
+    try {
+      rate = await fetchBcvRate();
+    } catch (err) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "No se pudo obtener la tasa del BCV. Ingrésala manualmente.",
+      });
+    }
+    return saveRate(ctx.prisma, ctx.session.user.id, rate, "BCV");
+  }),
+
+  // Override manual de la tasa (cuando la fuente automática no está disponible).
+  setManualRate: protectedProcedure
+    .input(z.object({ vesPerUsd: z.number().positive("La tasa debe ser mayor a 0") }))
+    .mutation(async ({ ctx, input }) => {
+      return saveRate(ctx.prisma, ctx.session.user.id, input.vesPerUsd, "MANUAL");
     }),
 });

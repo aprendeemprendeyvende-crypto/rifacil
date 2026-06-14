@@ -184,14 +184,14 @@ export function SaleDetailSheet({
                     : "text-slate-400"
                 }
               />
-              {rate && debt > 0 && (
-                <p className="mt-1 text-right text-xs text-slate-400">
-                  ≈{" "}
-                  {(debt * rate).toLocaleString("es-VE", {
-                    maximumFractionDigits: 2,
-                  })}{" "}
-                  Bs
-                </p>
+              {rate && (
+                <div className="mt-2 border-t pt-2 dark:border-slate-700">
+                  <Row label="Tasa" value={`${rate.toLocaleString("es-VE", { maximumFractionDigits: 4 })} Bs/USD`} />
+                  <Row
+                    label={debt > 0 ? "Deuda en Bs" : "Total en Bs"}
+                    value={`${((debt > 0 ? debt : total) * rate).toLocaleString("es-VE", { maximumFractionDigits: 2 })} Bs`}
+                  />
+                </div>
               )}
               <div className="mt-3">
                 <span

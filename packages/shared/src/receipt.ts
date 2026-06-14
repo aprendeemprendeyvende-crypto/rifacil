@@ -65,6 +65,7 @@ export interface GenerateReceiptInput {
     totalAmount?: unknown;
     finalAmount: unknown;
     amountPaid?: unknown; // monto realmente abonado (suma de Payments CONFIRMED)
+    rateUsed?: unknown; // VES por USD al momento de la venta (para equivalente en Bs)
     paymentMethod?: string | null;
     paidAt?: Date | string | null;
     createdAt?: Date | string | null;
@@ -117,6 +118,11 @@ export async function generateReceipt(
   const totalValue = Number(sale.totalAmount ?? sale.finalAmount ?? 0);
   const paidValue = Number(sale.amountPaid ?? sale.finalAmount ?? 0);
   const debtValue = Math.max(0, Number((totalValue - paidValue).toFixed(2)));
+
+  // Equivalente en bolívares según la tasa congelada en la venta.
+  const rate = Number(sale.rateUsed ?? 0);
+  const bs = (v: number) =>
+    `${(v * rate).toLocaleString("es-VE", { maximumFractionDigits: 2 })} Bs`;
 
   const divider = el("div", {
     borderTop: "2px dashed #D1D5DB",
@@ -194,6 +200,9 @@ export async function generateReceipt(
       debtValue > 0
         ? row("Deuda", money(debtValue), false, "#DC2626")
         : el("div", {}),
+      // Equivalente en Bs (si hay tasa registrada).
+      rate > 0 ? row("Tasa", `${rate.toLocaleString("es-VE", { maximumFractionDigits: 4 })} Bs/USD`) : el("div", {}),
+      rate > 0 ? row(debtValue > 0 ? "Deuda en Bs" : "Total en Bs", bs(debtValue > 0 ? debtValue : totalValue)) : el("div", {}),
       sale.paymentMethod ? row("Método", String(sale.paymentMethod)) : el("div", {}),
       row("Fecha", fmtDate(sale.paidAt || sale.createdAt)),
       divider,

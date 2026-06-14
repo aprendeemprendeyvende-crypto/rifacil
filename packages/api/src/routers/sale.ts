@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { PaymentMethod } from "@riffas/db";
+import { getActiveRate } from "../lib/exchangeRate";
 
 // Redondeo a 2 decimales para montos de dinero.
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -153,6 +154,11 @@ export const saleRouter = createTRPCRouter({
 
       const receiptNumber = `R-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
+      // Tasa activa del rifero: congela el equivalente en Bs al momento de la venta.
+      const activeRate = await getActiveRate(prisma, session.user.id);
+      const rateUsed = activeRate ? Number(activeRate.vesPerUsd) : null;
+      const amountVes = rateUsed ? round2(finalAmount * rateUsed) : null;
+
       const sale = await prisma.sale.create({
         data: {
           raffleId: input.raffleId,
@@ -165,6 +171,8 @@ export const saleRouter = createTRPCRouter({
           discountApplied: discountApplied || undefined,
           finalAmount,
           amountPaid,
+          rateUsed: rateUsed ?? undefined,
+          amountVes: amountVes ?? undefined,
           status: saleStatus,
           paymentMethod: input.paymentMethod,
           paymentReference: input.paymentReference,
