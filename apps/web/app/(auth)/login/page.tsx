@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { toast } from "react-hot-toast";
 import { Loader2, Phone, Lock, Eye, EyeOff } from "lucide-react";
 
@@ -40,11 +41,17 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-blue-500/30">
-            R
+          <div className="mx-auto inline-flex rounded-2xl bg-white px-5 py-3 shadow-lg shadow-blue-500/20">
+            <Image
+              src="/rafacillogo.png"
+              alt="Rifácil"
+              width={200}
+              height={60}
+              priority
+              className="h-12 w-auto"
+            />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-white">Riffas Pro</h1>
-          <p className="text-slate-400 mt-1">La plataforma definitiva para riferos</p>
+          <p className="text-slate-400 mt-3">La plataforma definitiva para riferos</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6">Iniciar sesion</h2>
