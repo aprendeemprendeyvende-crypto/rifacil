@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, Play, Pause, Trash2 } from "lucide-react";
 import { NumberBoard } from "@/components/number-board";
 import { PrizesManager } from "@/components/prizes-manager";
 import { ReportSection } from "@/components/report-section";
+import { SharePublic } from "@/components/share-public";
 
 export default function RaffleDetailPage() {
   const params = useParams<{ id: string }>();
@@ -124,6 +125,8 @@ export default function RaffleDetailPage() {
         <Row label="Valor del premio" value={`$${Number(raffle.prizeValue)}`} />
         <Row label="Reservados" value={String(stats?.reserved ?? "—")} />
       </div>
+
+      <SharePublic raffleId={id} isPublic={raffle.isPublic} onChanged={refetch} />
 
       <ReportSection raffleId={id} />
 
