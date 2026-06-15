@@ -7,6 +7,16 @@ import { getActiveRate } from "../lib/exchangeRate";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// Enmascara el nombre para no exponer datos completos al verificar por boleto.
+// "Juan Pérez" -> "Ju** P****"
+function maskName(name: string): string {
+  return (name || "")
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w.length <= 2 ? w : w.slice(0, 2) + "*".repeat(Math.min(4, w.length - 2))))
+    .join(" ");
+}
+
 // Carga diferida del recibo (binarios nativos satori/resvg) — igual que en sale.ts,
 // para no tumbar la API al iniciar y tolerar el fallo del render.
 type ReceiptArgs = Parameters<typeof import("@riffas/shared/receipt")["generateReceipt"]>[0];
@@ -143,6 +153,85 @@ export const publicRouter = createTRPCRouter({
         page: input.page,
         pageSize: input.pageSize,
         totalPages: Math.max(1, Math.ceil(total / input.pageSize)),
+      };
+    }),
+
+  // Verificar mis números: por teléfono o por número de boleto. Solo lectura.
+  // Da confianza al comprador sin exponer datos de otros (nombre enmascarado).
+  verify: publicProcedure
+    .input(z.object({ raffleId: z.string(), query: z.string().min(2) }))
+    .query(async ({ ctx, input }) => {
+      const raffle = await ctx.prisma.raffle.findFirst({
+        where: { id: input.raffleId, isPublic: true },
+        select: { id: true, userId: true },
+      });
+      if (!raffle) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const q = input.query.trim();
+      let contactId: string | null = null;
+
+      // 1) Intento por teléfono (normalizado a VE).
+      const phone = normalizePhone(q, "VE");
+      if (phone) {
+        const c = await ctx.prisma.contact.findFirst({
+          where: { userId: raffle.userId, phone },
+          select: { id: true },
+        });
+        if (c) contactId = c.id;
+      }
+
+      // 2) Intento por número de boleto asignado en esta rifa.
+      if (!contactId) {
+        const rn = await ctx.prisma.raffleNumber.findFirst({
+          where: { raffleId: raffle.id, number: q, contactId: { not: null } },
+          select: { contactId: true },
+        });
+        if (rn?.contactId) contactId = rn.contactId;
+      }
+
+      if (!contactId) {
+        return { found: false, holder: null, totals: { numbers: 0, abonado: 0, deuda: 0 }, items: [] };
+      }
+
+      const contact = await ctx.prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { name: true },
+      });
+      const numbers = await ctx.prisma.raffleNumber.findMany({
+        where: { raffleId: raffle.id, contactId },
+        orderBy: { number: "asc" },
+        select: {
+          number: true,
+          status: true,
+          sale: { select: { amountPaid: true, finalAmount: true, totalNumbers: true } },
+        },
+      });
+
+      const STATUS_ES: Record<string, string> = {
+        RESERVED: "Apartado",
+        SOLD: "Por confirmar",
+        PAID: "Pagado",
+        AVAILABLE: "Disponible",
+      };
+      let abonadoSum = 0;
+      let deudaSum = 0;
+      const items = numbers.map((n) => {
+        // Abonado/Deuda prorrateados por número (una venta puede cubrir varios).
+        const count = n.sale?.totalNumbers && n.sale.totalNumbers > 0 ? n.sale.totalNumbers : 1;
+        const ab = n.sale ? round2(Number(n.sale.amountPaid) / count) : 0;
+        const de = n.sale
+          ? Math.max(0, round2((Number(n.sale.finalAmount) - Number(n.sale.amountPaid)) / count))
+          : 0;
+        abonadoSum += ab;
+        deudaSum += de;
+        return { number: n.number, estado: STATUS_ES[n.status] ?? n.status, abonado: ab, deuda: de };
+      });
+
+      return {
+        found: items.length > 0,
+        holder: contact ? maskName(contact.name) : null,
+        totals: { numbers: items.length, abonado: round2(abonadoSum), deuda: round2(deudaSum) },
+        items,
       };
     }),
 

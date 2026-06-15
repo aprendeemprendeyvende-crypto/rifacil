@@ -208,6 +208,12 @@ export default function PublicRafflePage() {
             Esta rifa no está recibiendo ventas en este momento.
           </div>
         )}
+
+        {/* Verificar mi número */}
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Verificar mi número</h2>
+          <VerifySection raffleId={id} color={color} />
+        </section>
       </main>
 
       {/* Barra de acción fija */}
@@ -357,6 +363,98 @@ function NumberPicker({
           >
             Siguiente <ChevronRight className="h-4 w-4" />
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerifySection({ raffleId, color }: { raffleId: string; color: string }) {
+  const [query, setQuery] = useState("");
+  const [submitted, setSubmitted] = useState("");
+
+  const { data, isFetching } = api.public.verify.useQuery(
+    { raffleId, query: submitted },
+    { enabled: submitted.length >= 2 }
+  );
+
+  const STATUS_COLOR: Record<string, string> = {
+    Apartado: "bg-orange-100 text-orange-700",
+    "Por confirmar": "bg-yellow-100 text-yellow-800",
+    Pagado: "bg-green-100 text-green-700",
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <p className="mb-2 text-xs text-slate-500">
+        Ingresa tu teléfono o un número de boleto para ver tus apartados y su estado.
+      </p>
+      <div className="flex gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && setSubmitted(query.trim())}
+          placeholder="Teléfono o número de boleto"
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900"
+        />
+        <button
+          onClick={() => setSubmitted(query.trim())}
+          className="whitespace-nowrap rounded-xl px-4 py-2 font-medium text-white"
+          style={{ backgroundColor: color }}
+        >
+          Verificar
+        </button>
+      </div>
+
+      {submitted.length >= 2 && (
+        <div className="mt-4">
+          {isFetching ? (
+            <div className="flex justify-center py-6 text-slate-400">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          ) : !data || !data.found ? (
+            <p className="rounded-xl bg-slate-50 px-4 py-4 text-center text-sm text-slate-500">
+              No encontramos números con ese dato en esta rifa.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">
+                  Titular: <span className="font-medium text-slate-800">{data.holder}</span>
+                </span>
+                <span className="text-slate-500">{data.totals.numbers} número(s)</span>
+              </div>
+
+              <ul className="divide-y rounded-xl border">
+                {data.items.map((it) => (
+                  <li key={it.number} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                    <span className="font-mono font-semibold text-slate-900">{it.number}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        STATUS_COLOR[it.estado] ?? "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {it.estado}
+                    </span>
+                    <span className="ml-auto text-right text-xs">
+                      <span className="block text-green-600">Abonado {money(it.abonado)}</span>
+                      {it.deuda > 0 && <span className="block text-red-600">Deuda {money(it.deuda)}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm">
+                <span className="font-medium text-slate-700">Total</span>
+                <span className="text-right">
+                  <span className="block font-semibold text-green-600">Abonado {money(data.totals.abonado)}</span>
+                  {data.totals.deuda > 0 && (
+                    <span className="block font-semibold text-red-600">Deuda {money(data.totals.deuda)}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
