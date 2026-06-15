@@ -171,7 +171,7 @@ export default function NewRafflePage() {
           {errors.prize && <p className="text-sm text-red-600 mt-1">{String(errors.prize.message)}</p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Valor del premio (USD)</label>
             <input
@@ -240,7 +240,7 @@ export default function NewRafflePage() {
         {/* --- Organizador / sorteo --- */}
         <div className={sectionCls}>Organizador y sorteo</div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Representante legal</label>
             <input {...register("representanteLegal")} className={inputCls} placeholder="Nombre y apellido" />
@@ -251,7 +251,7 @@ export default function NewRafflePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>Lotería</label>
             <input {...register("loteria")} className={inputCls} placeholder="Ej: Lotería del Táchira" />
@@ -262,7 +262,7 @@ export default function NewRafflePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className={labelCls}>Inicio</label>
             <input type="datetime-local" {...register("startDate")} className={inputCls} />
@@ -280,7 +280,7 @@ export default function NewRafflePage() {
         {/* --- Imágenes --- */}
         <div className={sectionCls}>Imágenes</div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <ImageField label="Banner" kind="bannerUrl" url={images.bannerUrl} uploading={uploading === "bannerUrl"} onPick={handleImage} onClear={(k) => setImages((p) => ({ ...p, [k]: "" }))} />
           <ImageField label="Banner móvil" kind="bannerMobileUrl" url={images.bannerMobileUrl} uploading={uploading === "bannerMobileUrl"} onPick={handleImage} onClear={(k) => setImages((p) => ({ ...p, [k]: "" }))} />
           <ImageField label="Icono" kind="iconUrl" url={images.iconUrl} uploading={uploading === "iconUrl"} onPick={handleImage} onClear={(k) => setImages((p) => ({ ...p, [k]: "" }))} />
