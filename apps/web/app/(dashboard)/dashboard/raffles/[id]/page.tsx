@@ -8,6 +8,7 @@ import { NumberBoard } from "@/components/number-board";
 import { PrizesManager } from "@/components/prizes-manager";
 import { ReportSection } from "@/components/report-section";
 import { SharePublic } from "@/components/share-public";
+import { DrawSection } from "@/components/draw-section";
 
 export default function RaffleDetailPage() {
   const params = useParams<{ id: string }>();
@@ -127,6 +128,8 @@ export default function RaffleDetailPage() {
       </div>
 
       <SharePublic raffleId={id} isPublic={raffle.isPublic} onChanged={refetch} />
+
+      <DrawSection raffleId={id} onChanged={refetch} />
 
       <ReportSection raffleId={id} />
 

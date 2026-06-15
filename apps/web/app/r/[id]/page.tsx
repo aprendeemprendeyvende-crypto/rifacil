@@ -153,6 +153,16 @@ export default function PublicRafflePage() {
       </header>
 
       <main className="mx-auto max-w-2xl space-y-5 px-4 py-5">
+        {/* Ganador (si ya se sorteó) */}
+        {raffle.winner && (
+          <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-5 text-center">
+            <Trophy className="mx-auto h-8 w-8 text-amber-500" />
+            <p className="mt-1 text-sm text-amber-700">¡Número ganador!</p>
+            <p className="font-mono text-4xl font-extrabold text-slate-900">{raffle.winner.number}</p>
+            {raffle.winner.holder && <p className="mt-1 text-sm text-slate-600">{raffle.winner.holder}</p>}
+          </div>
+        )}
+
         {/* Precio + % vendido */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border bg-white p-4 text-center">

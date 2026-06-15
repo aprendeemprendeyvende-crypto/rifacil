@@ -418,32 +418,89 @@ export const raffleRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  // Realizar sorteo
+  // Estado del sorteo: ganador (con su contacto) o números elegibles si falta sortear.
+  getDraw: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const raffle = await ctx.prisma.raffle.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id },
+        select: {
+          status: true,
+          winnerNumber: true,
+          winnerId: true,
+          drawSeed: true,
+          drawTimestamp: true,
+        },
+      });
+      if (!raffle) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const eligible = await ctx.prisma.raffleNumber.count({
+        where: { raffleId: input.id, status: { in: ["SOLD", "PAID"] } },
+      });
+
+      let winner: { number: string; name: string | null; phone: string | null } | null = null;
+      if (raffle.status === "DRAWN" && raffle.winnerNumber) {
+        const contact = raffle.winnerId
+          ? await ctx.prisma.contact.findUnique({
+              where: { id: raffle.winnerId },
+              select: { name: true, phone: true },
+            })
+          : null;
+        winner = {
+          number: raffle.winnerNumber,
+          name: contact?.name ?? null,
+          phone: contact?.phone ?? null,
+        };
+      }
+
+      return {
+        status: raffle.status,
+        eligible,
+        seed: raffle.drawSeed,
+        drawnAt: raffle.drawTimestamp,
+        winner,
+      };
+    }),
+
+  // Realizar sorteo: elige ganador (aleatorio verificable por seed) entre los
+  // números vendidos/pagados. Permitido en ACTIVE/PAUSED/SOLD_OUT.
   draw: protectedProcedure
     .input(
       z.object({
         id: z.string(),
-        method: z.enum(["RANDOM_SYSTEM", "LIVE_STREAM", "PHYSICAL_BALLS", "BLOCKCHAIN"]),
+        method: z
+          .enum(["RANDOM_SYSTEM", "LIVE_STREAM", "PHYSICAL_BALLS", "BLOCKCHAIN"])
+          .default("RANDOM_SYSTEM"),
         seed: z.string().optional(), // Para reproducibilidad
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { prisma } = ctx;
+      const { prisma, session } = ctx;
 
       const raffle = await prisma.raffle.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id, status: "SOLD_OUT" },
-        include: { numbers: { where: { status: { in: ["SOLD", "PAID"] } } } },
+        where: {
+          id: input.id,
+          userId: session.user.id,
+          status: { in: ["ACTIVE", "PAUSED", "SOLD_OUT"] },
+        },
+        include: { numbers: { where: { status: { in: ["SOLD", "PAID"] } }, orderBy: { number: "asc" } } },
       });
 
-      if (!raffle) throw new TRPCError({ code: "NOT_FOUND", message: "Rifa no encontrada o no está agotada" });
+      if (!raffle) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Rifa no encontrada o ya sorteada" });
+      }
 
-      // Generar número ganador
       const soldNumbers = raffle.numbers;
-      const seed = input.seed || crypto.randomUUID();
+      if (soldNumbers.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No hay números vendidos para sortear" });
+      }
+
+      // Número ganador (aleatorio verificable a partir del seed).
+      const seed = input.seed || `${input.id}-${soldNumbers.length}-${session.user.id}`;
       const winnerIndex = await provableRandom(soldNumbers.length, seed);
       const winner = soldNumbers[winnerIndex];
 
-      await prisma.raffle.update({
+      const updated = await prisma.raffle.update({
         where: { id: input.id },
         data: {
           status: "DRAWN",
@@ -455,7 +512,30 @@ export const raffleRouter = createTRPCRouter({
         },
       });
 
-      return { winnerNumber: winner.number, seed };
+      // Auditoría del sorteo.
+      await prisma.activityLog.create({
+        data: {
+          userId: session.user.id,
+          action: "RAFFLE_DRAWN",
+          entityType: "Raffle",
+          entityId: input.id,
+          metadata: { winnerNumber: winner.number, seed },
+        },
+      });
+
+      const contact = winner.contactId
+        ? await prisma.contact.findUnique({
+            where: { id: winner.contactId },
+            select: { name: true, phone: true },
+          })
+        : null;
+
+      return {
+        winnerNumber: winner.number,
+        seed,
+        winner: { name: contact?.name ?? null, phone: contact?.phone ?? null },
+        drawnAt: updated.drawTimestamp,
+      };
     }),
 
   // Obtener rifa pública (sin auth)

@@ -71,8 +71,21 @@ export const publicRouter = createTRPCRouter({
         .update({ where: { id: raffle.id }, data: { viewCount: { increment: 1 } } })
         .catch(() => {});
 
+      // Ganador (si ya se sorteó), con nombre enmascarado.
+      let winner: { number: string; holder: string | null } | null = null;
+      if (raffle.status === "DRAWN" && raffle.winnerNumber) {
+        const wc = raffle.winnerId
+          ? await ctx.prisma.contact.findUnique({
+              where: { id: raffle.winnerId },
+              select: { name: true },
+            })
+          : null;
+        winner = { number: raffle.winnerNumber, holder: wc ? maskName(wc.name) : null };
+      }
+
       return {
         id: raffle.id,
+        winner,
         title: raffle.title,
         description: raffle.description,
         color: raffle.color || raffle.user.brandColor || "#7c3aed",
