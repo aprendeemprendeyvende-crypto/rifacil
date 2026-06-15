@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { normalizePhone, parseGoogleContacts, countryFromE164 } from "@riffas/shared";
+import { getPlanContext } from "../lib/plans";
 
 // Email tolerante para contactos phone-first: vacío, ausente o malformado -> null.
 // NUNCA rechaza la fila — los contactos requieren solo teléfono; muchos no traen
@@ -157,6 +158,15 @@ export const contactRouter = createTRPCRouter({
         });
       }
 
+      // Límite de contactos del plan.
+      const { limits, usage } = await getPlanContext(prisma, session.user.id);
+      if (usage.contacts >= limits.maxContacts) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Tu plan permite ${limits.maxContacts} contactos. Mejora tu plan para agregar más.`,
+        });
+      }
+
       const contact = await prisma.contact.create({
         data: {
           ...input,
@@ -243,6 +253,17 @@ export const contactRouter = createTRPCRouter({
       const { data, updateExisting } = input;
       const userId = session.user.id;
       const now = new Date();
+
+      // Límite de contactos del plan: bloquea si el lote excedería el tope.
+      // (Estimación por tamaño del lote; los duplicados luego no suman, pero el
+      // tope se respeta de forma segura.)
+      const { limits, usage } = await getPlanContext(prisma, userId);
+      if (usage.contacts + data.length > limits.maxContacts) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Tu plan permite ${limits.maxContacts} contactos (tienes ${usage.contacts}). Mejora tu plan para importar este archivo.`,
+        });
+      }
 
       const results = {
         total: data.length,
