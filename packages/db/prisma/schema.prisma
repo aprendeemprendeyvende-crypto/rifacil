@@ -602,6 +602,7 @@ model Vendor {
   phone       String
   email       String?
   code        String  @unique
+  accessCode  String? // PIN para que el vendedor entre a "Mi panel" (login phone + code)
   role        VendorRole @default(VENDEDOR)
 
   // Commission

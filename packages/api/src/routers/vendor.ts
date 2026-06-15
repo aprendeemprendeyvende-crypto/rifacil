@@ -3,6 +3,7 @@ import { VendorRole } from "@riffas/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { normalizePhone } from "@riffas/shared";
+import { generateAccessCode } from "../lib/vendorAuth";
 
 // Genera un código corto y legible a partir del nombre (p. ej. "Juan Pérez" -> "JUAN").
 function baseCodeFromName(name: string): string {
@@ -117,10 +118,26 @@ export const vendorRouter = createTRPCRouter({
           role: input.role,
           commissionRate: input.commissionRate,
           code,
+          accessCode: generateAccessCode(), // PIN para "Mi panel"
         },
       });
 
       return vendor;
+    }),
+
+  // (Re)genera el código de acceso del vendedor (para entrar a "Mi panel").
+  regenerateAccess: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const owned = await ctx.prisma.vendor.findFirst({
+        where: { id: input.id, userId: ctx.session.user.id },
+        select: { id: true },
+      });
+      if (!owned) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const accessCode = generateAccessCode();
+      await ctx.prisma.vendor.update({ where: { id: input.id }, data: { accessCode } });
+      return { accessCode };
     }),
 
   update: protectedProcedure

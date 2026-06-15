@@ -304,6 +304,17 @@ function VendorModal({
     },
   });
 
+  const utils = api.useContext();
+  const [accessCode, setAccessCode] = useState<string>(vendor?.accessCode ?? "");
+  const regen = api.vendor.regenerateAccess.useMutation({
+    onSuccess: (res) => {
+      setAccessCode(res.accessCode);
+      toast.success("Código de acceso generado");
+      utils.vendor.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const create = api.vendor.create.useMutation({
     onSuccess: () => {
       toast.success("Usuario creado");
@@ -406,6 +417,40 @@ function VendorModal({
               <input type="number" step="0.1" min="0" max="100" {...register("commissionRate")} className={inputCls} placeholder="10" />
             </Field>
           </div>
+
+          {isEdit && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-medium text-slate-700">Acceso a “Mi panel”</p>
+              <p className="mt-1 text-xs text-slate-500">
+                El vendedor entra en <span className="font-mono">/vendedor</span> con su teléfono y este código.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="flex-1 rounded-lg border bg-white px-3 py-2 font-mono text-lg tracking-widest text-slate-900">
+                  {accessCode || "— — — —"}
+                </span>
+                {accessCode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(accessCode);
+                      toast.success("Código copiado");
+                    }}
+                    className="rounded-lg border px-3 py-2 text-sm text-slate-600 hover:bg-white"
+                  >
+                    Copiar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => regen.mutate({ id: vendor.id })}
+                  disabled={regen.isLoading}
+                  className="rounded-lg border px-3 py-2 text-sm text-slate-600 hover:bg-white disabled:opacity-50"
+                >
+                  {regen.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : accessCode ? "Regenerar" : "Generar"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             type="submit"

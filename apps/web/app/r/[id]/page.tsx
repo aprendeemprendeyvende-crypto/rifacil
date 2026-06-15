@@ -63,6 +63,20 @@ export default function PublicRafflePage() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [checkout, setCheckout] = useState(false);
+  const [vendorCode, setVendorCode] = useState<string | undefined>(undefined);
+
+  // Atribución de referido: captura ?ref= y la persiste por rifa.
+  useEffect(() => {
+    const key = `ref_${id}`;
+    const fromUrl = new URLSearchParams(window.location.search).get("ref");
+    if (fromUrl) {
+      localStorage.setItem(key, fromUrl);
+      setVendorCode(fromUrl);
+    } else {
+      const stored = localStorage.getItem(key);
+      if (stored) setVendorCode(stored);
+    }
+  }, [id]);
   const [done, setDone] = useState<null | {
     numbers: string[];
     receiptUrl: string | null;
@@ -265,6 +279,7 @@ export default function PublicRafflePage() {
           numbers={[...selected]}
           pricePerNumber={raffle.pricePerNumber}
           paymentAccounts={raffle.paymentAccounts}
+          vendorCode={vendorCode}
           onClose={() => setCheckout(false)}
           onDone={(res) => {
             setCheckout(false);
@@ -490,6 +505,7 @@ function CheckoutSheet({
   numbers,
   pricePerNumber,
   paymentAccounts,
+  vendorCode,
   onClose,
   onDone,
 }: {
@@ -498,6 +514,7 @@ function CheckoutSheet({
   numbers: string[];
   pricePerNumber: number;
   paymentAccounts: any[];
+  vendorCode?: string;
   onClose: () => void;
   onDone: (res: { numbers: string[]; receiptUrl: string | null; amountPaid: number; debt: number }) => void;
 }) {
@@ -566,6 +583,7 @@ function CheckoutSheet({
       amountPaid: Number(paid.toFixed(2)),
       paymentReference: reference.trim() || undefined,
       paymentProof: proofUrl || undefined,
+      vendorCode: vendorCode || undefined,
     });
   }
 

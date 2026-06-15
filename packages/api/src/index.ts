@@ -11,10 +11,12 @@ import { subscriptionRouter } from "./routers/subscription";
 import { automationRouter } from "./routers/automation";
 import { templateRouter } from "./routers/template";
 import { publicRouter } from "./routers/public";
+import { vendorPortalRouter } from "./routers/vendorPortal";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
   public: publicRouter,
+  vendorPortal: vendorPortalRouter,
   raffle: raffleRouter,
   contact: contactRouter,
   sale: saleRouter,

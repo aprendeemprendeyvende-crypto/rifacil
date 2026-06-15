@@ -282,6 +282,7 @@ export const publicRouter = createTRPCRouter({
         amountPaid: z.number().nonnegative().optional(),
         paymentReference: z.string().optional(),
         paymentProof: z.string().url().optional(),
+        vendorCode: z.string().optional(), // referido del vendedor (?ref=)
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -309,6 +310,16 @@ export const publicRouter = createTRPCRouter({
           code: "CONFLICT",
           message: `Ya no disponibles: ${taken.map((n) => n.number).join(", ")}`,
         });
+      }
+
+      // Atribución a vendedor por código de referido (scoped al rifero dueño).
+      let vendorId: string | null = null;
+      if (input.vendorCode) {
+        const vendor = await prisma.vendor.findFirst({
+          where: { userId, code: input.vendorCode, active: true },
+          select: { id: true },
+        });
+        vendorId = vendor?.id ?? null;
       }
 
       // Cliente del rifero (upsert por teléfono).
@@ -342,6 +353,7 @@ export const publicRouter = createTRPCRouter({
           raffleId: raffle.id,
           contactId: contact.id,
           userId,
+          vendorId,
           numbers: input.numbers,
           totalNumbers: input.numbers.length,
           totalAmount,
@@ -355,7 +367,7 @@ export const publicRouter = createTRPCRouter({
           paymentReference: input.paymentReference,
           paymentProof: input.paymentProof,
           receiptNumber,
-          source: "public",
+          source: vendorId ? "vendor" : "public",
         },
         include: { contact: true, raffle: true },
       });
@@ -381,6 +393,7 @@ export const publicRouter = createTRPCRouter({
           status: "SOLD",
           contactId: contact.id,
           saleId: sale.id,
+          vendorId,
           soldAt: new Date(),
           paymentMethod: input.paymentMethod,
           receiptNumber,
