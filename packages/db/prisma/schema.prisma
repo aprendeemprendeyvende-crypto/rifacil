@@ -226,6 +226,10 @@ model UserSettings {
   whatsappConnected    Boolean @default(false)
   whatsappPhoneNumber  String?
   whatsappApiToken     String? @db.Text
+  // WhatsApp Cloud API (BSP) — listo para conectar después (envío masivo real).
+  whatsappProvider      String? @default("NONE") // NONE | CLOUD_API
+  whatsappPhoneNumberId String? // Phone Number ID de Meta
+  whatsappBusinessId    String? // WABA / Business Account ID
 
   // Payment methods accepted
   acceptedPaymentMethods PaymentMethod[] @default([PAGO_MOVIL, BINANCE, ZELLE, EFECTIVO_USD])

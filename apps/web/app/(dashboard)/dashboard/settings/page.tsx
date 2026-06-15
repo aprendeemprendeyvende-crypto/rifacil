@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "react-hot-toast";
 import { PaymentAccountsSection } from "@/components/payment-accounts-section";
 import { RateSection } from "@/components/rate-section";
+import { WhatsappSection } from "@/components/whatsapp-section";
 
 export default function SettingsPage() {
   const { data: settings, refetch } = api.settings.get.useQuery();
@@ -39,6 +40,8 @@ export default function SettingsPage() {
       <RateSection />
 
       <PaymentAccountsSection />
+
+      <WhatsappSection />
     </div>
   );
 }
