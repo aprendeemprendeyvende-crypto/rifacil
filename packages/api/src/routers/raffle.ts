@@ -3,7 +3,6 @@ import { createTRPCRouter, protectedProcedure, premiumProcedure } from "../trpc"
 import { TRPCError } from "@trpc/server";
 import { generateNumbers, normalizePhone } from "@riffas/shared";
 import { uploadImage } from "@riffas/shared/cloudinary";
-import { getPlanContext } from "../lib/plans";
 
 const HEX_COLOR = /^#([0-9a-fA-F]{6})$/;
 
@@ -243,8 +242,16 @@ export const raffleRouter = createTRPCRouter({
         where: { userId: session.user.id },
       });
 
-      // El límite de rifas se aplica al ACTIVAR (rifas activas), no al crear
-      // borradores. Ver raffle.activate.
+      const raffleCount = await prisma.raffle.count({
+        where: { userId: session.user.id, status: { not: "CANCELLED" } },
+      });
+
+      if (sub && raffleCount >= sub.maxRaffles) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Has alcanzado el límite de ${sub.maxRaffles} rifas para tu plan. Actualiza para crear más.`,
+        });
+      }
 
       // Verificar límite de números
       if (sub && input.totalNumbers > sub.maxNumbers) {
@@ -343,31 +350,12 @@ export const raffleRouter = createTRPCRouter({
       }
     }),
 
-  // Activar rifa (aplica el límite de rifas ACTIVAS del plan)
+  // Activar rifa
   activate: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const { prisma, session } = ctx;
-
-      const current = await prisma.raffle.findFirst({
-        where: { id: input.id, userId: session.user.id },
-        select: { status: true },
-      });
-      if (!current) throw new TRPCError({ code: "NOT_FOUND" });
-
-      // Solo cuenta como "nueva activa" si no estaba ya activa.
-      if (current.status !== "ACTIVE") {
-        const { limits, usage } = await getPlanContext(prisma, session.user.id);
-        if (usage.activeRaffles >= limits.maxRaffles) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: `Tu plan permite ${limits.maxRaffles} rifa(s) activa(s). Pausa otra o mejora tu plan.`,
-          });
-        }
-      }
-
-      const raffle = await prisma.raffle.update({
-        where: { id: input.id, userId: session.user.id },
+      const raffle = await ctx.prisma.raffle.update({
+        where: { id: input.id, userId: ctx.session.user.id },
         data: { status: "ACTIVE" },
       });
       return raffle;
