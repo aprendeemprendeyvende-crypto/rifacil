@@ -50,18 +50,35 @@ export const publicRouter = createTRPCRouter({
           brandLogo: true,
           brandColor: true,
           brandColorSecondary: true,
+          // Cuentas de pago activas del rifero (mismo shape público que getRaffle).
+          // Son datos que el comprador necesita ver para pagar; NO hay secretos.
+          paymentAccounts: {
+            where: { active: true },
+            orderBy: { method: "asc" },
+            select: {
+              method: true,
+              bankName: true,
+              phone: true,
+              idDocument: true,
+              email: true,
+              wallet: true,
+              holderName: true,
+              accountNumber: true,
+              note: true,
+            },
+          },
         },
       });
       if (!rifero) throw new TRPCError({ code: "NOT_FOUND" });
 
+      // Landing de marca: SOLO rifas ACTIVE en el listado (sin pausadas/sorteadas).
       const raffles = await ctx.prisma.raffle.findMany({
         where: {
           userId: rifero.id,
           isPublic: true,
-          status: { in: ["ACTIVE", "PAUSED", "DRAWN"] },
+          status: "ACTIVE",
         },
-        // Activas primero, luego más recientes.
-        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           title: true,
@@ -90,6 +107,7 @@ export const publicRouter = createTRPCRouter({
           ...r,
           pricePerNumber: Number(r.pricePerNumber),
         })),
+        paymentAccounts: rifero.paymentAccounts,
       };
     }),
 
