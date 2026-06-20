@@ -39,6 +39,16 @@ const config = {
   ],
 };
 
+// Campos de datos de PaymentAccount (todos nullable). El seed SIEMPRE setea los 8
+// explícitamente (null donde no aplica) para que el upsert no deje pegado ningún
+// valor viejo del WIP — p.ej. un note de Bancolombia preexistente.
+const PA_FIELDS = ["bankName", "phone", "idDocument", "email", "wallet", "holderName", "accountNumber", "note"] as const;
+function fullData(data: Record<string, any>): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const f of PA_FIELDS) out[f] = data[f] ?? null;
+  return out;
+}
+
 // Cuentas de pago (paridad con data.js de rifas-hp). PII de terceros ya pública.
 const accounts: Array<{ method: PaymentMethod; data: any }> = [
   { method: "PAGO_MOVIL", data: { bankName: "0102 · Banco Provincial", phone: "0424-7376999", idDocument: "21.180.135", holderName: "Orlando Pernía" } },
@@ -67,10 +77,11 @@ const accounts: Array<{ method: PaymentMethod; data: any }> = [
 
   // 3) cuentas de pago (upsert por userId+method)
   for (const acc of accounts) {
+    const data = fullData(acc.data); // los 8 campos, null donde no aplica
     await prisma.paymentAccount.upsert({
       where: { userId_method: { userId: orlando.id, method: acc.method } },
-      update: { ...acc.data, active: true },
-      create: { userId: orlando.id, method: acc.method, active: true, ...acc.data },
+      update: { ...data, active: true },
+      create: { userId: orlando.id, method: acc.method, active: true, ...data },
     });
     console.log(`[pago] ✅ ${acc.method}`);
   }
