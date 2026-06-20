@@ -79,11 +79,14 @@
 .sf .btn-block { width: 100%; }
 .sf .btn-lg { padding: 18px 34px; font-size: 1.08rem; }
 
-/* Rainbow ring (la firma del logo) + disco interno BLANCO */
-.sf .ring { position: relative; border-radius: 50%; padding: 5px; background: var(--ring); animation: sf-spin 14s linear infinite; }
+/* Rainbow ring (la firma del logo) + disco interno BLANCO.
+   IMPORTANTE: solo el aro arcoíris gira (::before/::after). El disco + logo
+   quedan fijos y derechos — un logotipo horizontal no debe rotar. */
+.sf .ring { position: relative; border-radius: 50%; padding: 6px; isolation: isolate; }
+.sf .ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ring); animation: sf-spin 14s linear infinite; z-index: 0; }
 .sf .ring::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; background: var(--ring); filter: blur(22px); opacity: .55; z-index: -1; animation: sf-spin 14s linear infinite; }
-.sf .ring .disc { border-radius: 50%; background: #fff; display: grid; place-items: center; aspect-ratio: 1; padding: 12%; }
-.sf .ring .disc img { border-radius: 50%; width: 100%; height: 100%; object-fit: contain; }
+.sf .ring .disc { position: relative; z-index: 1; border-radius: 50%; background: #fff; display: grid; place-items: center; aspect-ratio: 1; padding: 11%; }
+.sf .ring .disc img { width: 100%; height: 100%; object-fit: contain; }
 @keyframes sf-spin { to { transform: rotate(360deg); } }
 
 /* Hero */
