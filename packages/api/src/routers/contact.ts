@@ -100,6 +100,44 @@ export const contactRouter = createTRPCRouter({
       return { contacts, nextCursor };
     }),
 
+  // Devuelve SOLO los IDs (y total) de los contactos que matchean los filtros.
+  // Pensado para el "select all matching filter" del UI bulk delete: la página
+  // muestra 50 paginados pero el usuario puede querer seleccionar los 470 que
+  // matchean un filtro (ej. tag=v1_import). Capeado a 5000 como red de seguridad.
+  listIds: protectedProcedure
+    .input(
+      z.object({
+        search: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        source: z.string().optional(),
+        city: z.string().optional(),
+        hasPurchased: z.boolean().optional(),
+      }).optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const { search, tags, source, city, hasPurchased } = input || {};
+      const where: any = { userId: ctx.session.user.id };
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search } },
+          { email: { contains: search, mode: "insensitive" } },
+        ];
+      }
+      if (tags && tags.length > 0) where.tags = { hasSome: tags };
+      if (source) where.source = source;
+      if (city) where.city = { contains: city, mode: "insensitive" };
+      if (hasPurchased === true) where.totalSpent = { gt: 0 };
+      if (hasPurchased === false) where.totalSpent = { equals: 0 };
+
+      const contacts = await ctx.prisma.contact.findMany({
+        where,
+        select: { id: true },
+        take: 5000,
+      });
+      return { ids: contacts.map((c) => c.id), total: contacts.length };
+    }),
+
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -211,13 +249,90 @@ export const contactRouter = createTRPCRouter({
       return contact;
     }),
 
+  // Borrado individual con GUARD de ventas. Importante: el schema tiene
+  // Sale.contact con onDelete: Cascade — sin este guard, borrar un Contact
+  // destruye sus ventas en cascada. TODO(cleanup): cambiar onDelete a Restrict
+  // en una migration futura para que la DB misma rechace el borrado.
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.prisma.contact.delete({
+      const contact = await ctx.prisma.contact.findFirst({
         where: { id: input.id, userId: ctx.session.user.id },
+        include: { _count: { select: { sales: true, numbers: true } } },
       });
+      if (!contact) throw new TRPCError({ code: "NOT_FOUND" });
+      if (contact._count.sales > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `No se puede borrar: tiene ${contact._count.sales} venta(s) asociada(s). Cancela las ventas primero.`,
+        });
+      }
+      // RaffleNumber.contactId solo se setea con una Sale (ver public.createSale,
+      // sale.create) — si sales=0, no hay numbers asignados. Doble check defensivo:
+      if (contact._count.numbers > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `No se puede borrar: tiene ${contact._count.numbers} número(s) asignado(s).`,
+        });
+      }
+      await ctx.prisma.contact.delete({ where: { id: input.id } });
       return { success: true };
+    }),
+
+  // Borrado en lote. Estrategia partial-report: borra los que se pueden y
+  // reporta los bloqueados (con razón y conteos). Multi-tenant: solo borra
+  // contactos del session user. Por contacto: o se borra completo o se reporta,
+  // nunca borrado a medias.
+  deleteMany: protectedProcedure
+    .input(z.object({ ids: z.array(z.string()).min(1).max(2000) }))
+    .mutation(async ({ ctx, input }) => {
+      const { prisma, session } = ctx;
+
+      // 1) Traer todos los contactos que coinciden con los IDs Y pertenecen
+      //    al user. Esto cubre el guard multi-tenant: IDs ajenos quedan fuera.
+      const owned = await prisma.contact.findMany({
+        where: { id: { in: input.ids }, userId: session.user.id },
+        select: {
+          id: true,
+          name: true,
+          _count: { select: { sales: true, numbers: true } },
+        },
+      });
+
+      const ownedIds = new Set(owned.map((c) => c.id));
+      const notOwned = input.ids.filter((id) => !ownedIds.has(id));
+
+      // 2) Clasificar: borrables vs bloqueados por ventas/números
+      const deletable: string[] = [];
+      const blocked: Array<{ id: string; name: string; salesCount: number; numbersCount: number }> = [];
+      for (const c of owned) {
+        if (c._count.sales > 0 || c._count.numbers > 0) {
+          blocked.push({
+            id: c.id,
+            name: c.name,
+            salesCount: c._count.sales,
+            numbersCount: c._count.numbers,
+          });
+        } else {
+          deletable.push(c.id);
+        }
+      }
+
+      // 3) Borrar los borrables en una sola operación (atómica a nivel DB).
+      let deletedCount = 0;
+      if (deletable.length > 0) {
+        const result = await prisma.contact.deleteMany({
+          where: { id: { in: deletable }, userId: session.user.id },
+        });
+        deletedCount = result.count;
+      }
+
+      return {
+        requested: input.ids.length,
+        deleted: deletedCount,
+        blocked,
+        notOwnedCount: notOwned.length,
+      };
     }),
 
   importCSV: protectedProcedure

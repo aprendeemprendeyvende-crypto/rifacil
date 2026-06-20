@@ -1,17 +1,33 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "@/lib/trpc";
 import { toast } from "react-hot-toast";
 import { parseGoogleContacts, type ParseResult } from "@riffas/shared";
-import { Plus, Upload, Check, X } from "lucide-react";
+import { Plus, Upload, Check, X, Trash2, AlertTriangle } from "lucide-react";
+
+type ListFilter = {
+  source?: string;
+  tags?: string[];
+};
 
 export default function ContactsPage() {
-  const { data, refetch } = api.contact.list.useQuery({ limit: 50 });
+  const [filter, setFilter] = useState<ListFilter>({});
+  const { data, refetch } = api.contact.list.useQuery({ limit: 50, ...filter });
+  const utils = api.useContext();
+
   const [preview, setPreview] = useState<ParseResult | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+
+  // Selección para borrado en lote
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<null | {
+    ids: string[];
+    strong: boolean; // confirmación reforzada (bulk grande / select all matching)
+  }>(null);
+  const [strongConfirmText, setStrongConfirmText] = useState("");
 
   const createContact = api.contact.create.useMutation({
     onSuccess: () => {
@@ -38,13 +54,44 @@ export default function ContactsPage() {
     onError: (e) => toast.error(e.message || "No se pudo importar"),
   });
 
+  const deleteOne = api.contact.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Contacto borrado");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMany = api.contact.deleteMany.useMutation({
+    onSuccess: (res) => {
+      const lines: string[] = [];
+      lines.push(`Borrados: ${res.deleted}`);
+      if (res.blocked.length > 0) lines.push(`Bloqueados con ventas: ${res.blocked.length}`);
+      if (res.notOwnedCount > 0) lines.push(`Ajenos (ignorados): ${res.notOwnedCount}`);
+      toast.success(lines.join(" — "));
+      // Si hubo bloqueados, los mostramos en consola para debugging del rifero
+      if (res.blocked.length > 0) {
+        console.warn("[deleteMany] contactos no borrados por tener ventas:", res.blocked);
+      }
+      setSelectedIds(new Set());
+      setConfirmDelete(null);
+      setStrongConfirmText("");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Resolver IDs que matchean el filtro actual (para "Seleccionar todos los que matchean").
+  const fetchAllMatchingIds = async () => {
+    const result = await utils.contact.listIds.fetch(filter);
+    return result.ids;
+  };
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
     const text = await file.text();
-    // Parsear del lado del cliente ANTES de tocar el servidor: separa ':::',
-    // concatena nombre, normaliza a E.164 con default Venezuela y deduplica.
     const result = parseGoogleContacts(text, { tag: "Importados" });
     setPreview(result);
   }
@@ -63,6 +110,59 @@ export default function ContactsPage() {
       })),
     });
   }
+
+  const visibleIds = useMemo(() => data?.contacts.map((c) => c.id) ?? [], [data]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function handleSelectAllMatching() {
+    try {
+      const ids = await fetchAllMatchingIds();
+      setSelectedIds(new Set(ids));
+      toast.success(`${ids.length} contactos seleccionados`);
+    } catch {
+      toast.error("No se pudo obtener la lista completa");
+    }
+  }
+
+  function askDeleteOne(id: string) {
+    setConfirmDelete({ ids: [id], strong: false });
+  }
+
+  function askDeleteSelected() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    // Reforzar confirmación si son muchos (más que la página visible).
+    setConfirmDelete({ ids, strong: ids.length > 50 });
+  }
+
+  // Filtro rápido por tag v1_import
+  const v1FilterActive = filter.tags?.includes("v1_import") ?? false;
+  function toggleV1Filter() {
+    setFilter((prev) =>
+      v1FilterActive ? { ...prev, tags: undefined } : { ...prev, tags: ["v1_import"] }
+    );
+    setSelectedIds(new Set());
+  }
+
+  const strongConfirmExpected = `BORRAR ${confirmDelete?.ids.length ?? 0}`;
 
   return (
     <div className="space-y-6">
@@ -86,6 +186,63 @@ export default function ContactsPage() {
           </button>
         </div>
       </div>
+
+      {/* Filtros rápidos por tag */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-500">Filtros:</span>
+        <button
+          onClick={toggleV1Filter}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+            v1FilterActive
+              ? "border-purple-500 bg-purple-50 text-purple-700"
+              : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Importados de v1 {v1FilterActive && "✓"}
+        </button>
+        {v1FilterActive && (
+          <button
+            onClick={() => {
+              setFilter({});
+              setSelectedIds(new Set());
+            }}
+            className="text-xs text-slate-400 hover:text-slate-600"
+          >
+            Limpiar filtro
+          </button>
+        )}
+      </div>
+
+      {/* Barra de acción cuando hay selección */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <div className="text-sm font-medium text-red-900">
+            {selectedIds.size} seleccionado{selectedIds.size === 1 ? "" : "s"}
+          </div>
+          <div className="flex gap-2">
+            {Object.keys(filter).length > 0 && (
+              <button
+                onClick={handleSelectAllMatching}
+                className="rounded-xl border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Seleccionar todos los que matchean el filtro
+              </button>
+            )}
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="rounded-xl border px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              Limpiar
+            </button>
+            <button
+              onClick={askDeleteSelected}
+              className="flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              <Trash2 className="h-4 w-4" /> Borrar seleccionados
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Vista previa de la importación */}
       {preview && (
@@ -150,22 +307,148 @@ export default function ContactsPage() {
         <table className="w-full">
           <thead className="bg-slate-50 dark:bg-slate-800">
             <tr>
+              <th className="w-10 px-4 py-3 text-left">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                  aria-label="Seleccionar todos los visibles"
+                  className="h-4 w-4 cursor-pointer rounded border-slate-300"
+                />
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">Nombre</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">Telefono</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">Teléfono</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">Compras</th>
+              <th className="w-16 px-4 py-3 text-left text-xs font-medium text-slate-500">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {data?.contacts.map((c) => (
-              <tr key={c.id}>
-                <td className="px-4 py-3">{c.name}</td>
-                <td className="px-4 py-3">{c.phone}</td>
-                <td className="px-4 py-3">{c._count.sales}</td>
+            {data?.contacts.map((c) => {
+              const hasSales = (c._count?.sales ?? 0) > 0;
+              const checked = selectedIds.has(c.id);
+              return (
+                <tr key={c.id} className={checked ? "bg-red-50/40" : ""}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleOne(c.id)}
+                      aria-label={`Seleccionar ${c.name}`}
+                      className="h-4 w-4 cursor-pointer rounded border-slate-300"
+                    />
+                  </td>
+                  <td className="px-4 py-3">{c.name}</td>
+                  <td className="px-4 py-3 font-mono text-sm">{c.phone}</td>
+                  <td className="px-4 py-3">{c._count?.sales ?? 0}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => askDeleteOne(c.id)}
+                      disabled={hasSales}
+                      title={
+                        hasSales
+                          ? "No se puede borrar: tiene ventas. Cancelá las ventas primero."
+                          : "Borrar contacto"
+                      }
+                      className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                      aria-label={`Borrar ${c.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {data?.contacts.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">
+                  No hay contactos que matcheen el filtro.
+                </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Modal de confirmación de borrado */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+          <div className="w-full space-y-4 rounded-t-2xl border bg-white p-6 sm:max-w-md sm:rounded-2xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-red-100 p-2">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-slate-900">
+                  {confirmDelete.strong
+                    ? `Borrado masivo: ${confirmDelete.ids.length} contactos`
+                    : `¿Borrar ${confirmDelete.ids.length === 1 ? "el contacto" : `${confirmDelete.ids.length} contactos`}?`}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {confirmDelete.strong
+                    ? "Vas a borrar muchos contactos de un golpe. Esta acción NO se puede deshacer. Los contactos con ventas se saltarán automáticamente."
+                    : confirmDelete.ids.length === 1
+                    ? "Esta acción no se puede deshacer. Si el contacto tiene ventas asociadas, no se borrará."
+                    : "Esta acción no se puede deshacer. Los que tengan ventas se saltarán."}
+                </p>
+              </div>
+            </div>
+
+            {confirmDelete.strong && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Para confirmar, escribí: <span className="font-mono">{strongConfirmExpected}</span>
+                </label>
+                <input
+                  value={strongConfirmText}
+                  onChange={(e) => setStrongConfirmText(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm text-slate-900"
+                  placeholder={strongConfirmExpected}
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setConfirmDelete(null);
+                  setStrongConfirmText("");
+                }}
+                className="flex-1 rounded-xl border px-4 py-3 font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirmDelete) return;
+                  if (confirmDelete.strong && strongConfirmText !== strongConfirmExpected) {
+                    toast.error("Texto de confirmación no coincide");
+                    return;
+                  }
+                  if (confirmDelete.ids.length === 1) {
+                    deleteOne.mutate({ id: confirmDelete.ids[0] });
+                    setConfirmDelete(null);
+                    setStrongConfirmText("");
+                  } else {
+                    deleteMany.mutate({ ids: confirmDelete.ids });
+                  }
+                }}
+                disabled={
+                  deleteOne.isLoading ||
+                  deleteMany.isLoading ||
+                  (confirmDelete.strong && strongConfirmText !== strongConfirmExpected)
+                }
+                className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteOne.isLoading || deleteMany.isLoading
+                  ? "Borrando…"
+                  : `Borrar ${confirmDelete.ids.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {newOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
           <div className="w-full space-y-4 rounded-t-2xl border bg-white p-6 sm:max-w-md sm:rounded-2xl">
