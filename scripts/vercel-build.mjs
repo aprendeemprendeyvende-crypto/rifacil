@@ -29,4 +29,7 @@ if (env === "production") {
 }
 
 console.log("[vercel-build] turbo run build…");
-run("turbo run build");
+// Vía `pnpm exec` para resolver turbo desde node_modules/.bin sin depender del
+// PATH ni del cwd (el buildCommand corre con cwd = apps/web, Root Directory del
+// proyecto en Vercel; el script vive en la raíz del repo).
+run("pnpm exec turbo run build");
