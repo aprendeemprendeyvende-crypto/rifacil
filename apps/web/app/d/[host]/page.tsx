@@ -205,14 +205,10 @@ export default async function BrandLanding({ params }: { params: { host: string 
             </div>
             <div className="hero-logo">
               {brand.logo ? (
-                <div className="ring">
-                  <div className="disc">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={brand.logo} alt={brand.name} />
-                  </div>
-                </div>
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="hero-logo-img" src={brand.logo} alt={brand.name} />
               ) : (
-                <div className="ring"><div className="disc" style={{ fontSize: "3rem" }}>🎟️</div></div>
+                <div className="hero-logo-ph">🎟️</div>
               )}
             </div>
           </div>
