@@ -288,16 +288,51 @@ export function VerifyWidget({ raffles }: { raffles: RaffleOpt[] }) {
           <div style={{ marginTop: 18, textAlign: "left" }}>
             {result.found ? (
               <>
-                <p className="lead" style={{ margin: "0 0 12px" }}>
-                  Titular: <b style={{ color: "var(--gold-2)" }}>{result.holder}</b> · {result.totals.numbers} número(s) · Abonado {money(result.totals.abonado)} · Deuda {money(result.totals.deuda)}
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {result.items.map((it: any) => (
-                    <span key={it.number} style={{ background: "rgba(255,255,255,.08)", borderRadius: 8, padding: "5px 10px", fontSize: ".82rem" }}>
-                      {it.number} · {it.estado}
-                    </span>
-                  ))}
+                {/* Titular: primer nombre completo y legible */}
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                  <div style={{ fontSize: "1rem", color: "var(--muted)" }}>
+                    Titular: <b style={{ color: "var(--text)", fontSize: "1.3rem" }}>{result.holder}</b>
+                  </div>
+                  <span style={{ fontSize: ".9rem", color: "var(--muted)", fontWeight: 600 }}>
+                    {result.totals.numbers} {result.totals.numbers === 1 ? "boleto" : "boletos"}
+                  </span>
                 </div>
+
+                {/* Boletos: número GRANDE + estado + montos */}
+                <div style={{ display: "grid", gap: 10 }}>
+                  {result.items.map((it: any) => {
+                    const fg =
+                      it.estado === "Pagado" ? "var(--ok)" :
+                      it.estado === "Apartado" ? "var(--gold-2)" :
+                      it.estado === "Por confirmar" ? "var(--cyan)" : "var(--muted)";
+                    return (
+                      <div key={it.number} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,.04)", border: "1px solid var(--line-2)" }}>
+                        {/* Número grande — el dato más importante */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 92, padding: "8px 12px", borderRadius: 12, background: "rgba(247,183,51,.1)", border: "1px solid rgba(247,183,51,.35)" }}>
+                          <span style={{ fontSize: ".6rem", letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 700 }}>Boleto</span>
+                          <span style={{ fontFamily: "var(--display)", fontSize: "2.3rem", lineHeight: 1.05, color: "var(--gold-2)" }}>{it.number}</span>
+                        </div>
+                        {/* Estado + montos */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "inline-block", fontSize: ".82rem", fontWeight: 800, letterSpacing: ".03em", color: fg, background: "rgba(255,255,255,.06)", border: `1px solid ${fg}`, borderRadius: 999, padding: "4px 12px" }}>
+                            {it.estado}
+                          </span>
+                          <div style={{ marginTop: 8, fontSize: ".95rem", color: "var(--muted)" }}>
+                            Abonado <b style={{ color: "var(--text)" }}>{money(it.abonado)}</b>
+                            {it.deuda > 0 && <> · Deuda <b style={{ color: "#ff8a7a" }}>{money(it.deuda)}</b></>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Totales (si hay más de un boleto) */}
+                {result.totals.numbers > 1 && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: ".95rem", color: "var(--muted)" }}>
+                    Total: <b style={{ color: "var(--text)" }}>{result.totals.numbers} boletos</b> · Abonado <b style={{ color: "var(--text)" }}>{money(result.totals.abonado)}</b> · Deuda <b style={{ color: result.totals.deuda > 0 ? "#ff8a7a" : "var(--ok)" }}>{money(result.totals.deuda)}</b>
+                  </div>
+                )}
               </>
             ) : (
               <p className="lead center" style={{ margin: 0 }}>No encontramos boletos con ese dato. Verificá el teléfono o número.</p>
