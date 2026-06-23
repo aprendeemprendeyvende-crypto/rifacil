@@ -136,6 +136,16 @@ export async function generateMetadata({ params }: { params: { host: string } })
     return {
       title: data.brand.name,
       description: `${data.brand.name} — Premios reales, sorteos en vivo. Elegí tus números y participá.`,
+      // Favicon de marca (isotipo HP) SOLO en la landing — no pisa el favicon de
+      // plataforma (Rifácil) del root layout. Generados desde el logo de Cloudinary.
+      icons: {
+        icon: [
+          { url: "/brand/pernia/favicon.ico", sizes: "32x32" },
+          { url: "/brand/pernia/icon-192.png", type: "image/png", sizes: "192x192" },
+          { url: "/brand/pernia/icon-512.png", type: "image/png", sizes: "512x512" },
+        ],
+        apple: [{ url: "/brand/pernia/apple-touch-icon.png", sizes: "180x180" }],
+      },
     };
   } catch {
     return { title: "Tienda" };
