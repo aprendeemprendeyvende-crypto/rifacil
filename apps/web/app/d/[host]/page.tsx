@@ -62,6 +62,14 @@ const DEFAULT_FAQS = [
 ];
 
 // ───────── Landing fría: textos EDITABLES (ajustar cuando Orlando confirme cifras) ─────────
+// Hero — mini-franja de autoridad (cifras "2019" / "cientos" a confirmar con Orlando).
+const HERO_TRUST: { icon: string; text: string }[] = [
+  { icon: "🏆", text: "Desde 2019 entregando premios reales" },
+  { icon: "📺", text: "Sorteos EN VIVO por Instagram" },
+  { icon: "✅", text: "Jugamos con Lotería del Táchira oficial" },
+  { icon: "💛", text: "Cientos de ganadores" },
+];
+
 // Paso 1 — Franja de confianza (anti-estafa), debajo de "Rifas disponibles".
 const TRUST_SEALS: { icon: string; text: string }[] = [
   { icon: "🏆", text: "+6 años entregando premios reales (desde 2019)" },
@@ -169,9 +177,9 @@ export default async function BrandLanding({ params }: { params: { host: string 
                 <a className="btn btn-ghost btn-lg" href="#participar">¿Cómo participar?</a>
               </div>
               <div className="trust">
-                <span className="t"><span className="dot" /> Sorteos transparentes</span>
-                <span className="t">💳 <b>Múltiples</b> métodos de pago</span>
-                <span className="t">⚡ Confirmación inmediata</span>
+                {HERO_TRUST.map((t, i) => (
+                  <span className="t" key={i}><span className="t-ic" aria-hidden>{t.icon}</span> {t.text}</span>
+                ))}
               </div>
               {stats.length > 0 && <JackpotStats stats={stats} />}
             </div>
