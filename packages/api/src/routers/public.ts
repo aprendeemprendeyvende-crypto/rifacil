@@ -9,17 +9,20 @@ import { parseStorefrontConfig } from "../lib/storefrontConfig";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// Nombre legible pero con privacidad: muestra los nombres completos y deja el
-// apellido (última palabra) como inicial. Nada de hileras de asteriscos.
-//   "María Espinoza"          -> "María E."
-//   "María Esther de Marcano" -> "María Esther de M."
-//   "Madonna"                 -> "Madonna"  (un solo nombre: nada que ocultar)
+// Nombre legible y privado para el verificador: PRIMER NOMBRE completo (para que el
+// cliente se reconozca) + inicial de la siguiente palabra significativa. Oculta el
+// resto del apellido. Nada de hileras de asteriscos.
+//   "María Esther de Martínez" -> "María E."
+//   "Juan Pérez"               -> "Juan P."
+//   "María de Martínez"        -> "María M."   (salta el conector "de")
+//   "Madonna"                  -> "Madonna"
+const NAME_CONNECTORS = new Set(["de", "del", "la", "las", "los", "y", "da", "do", "san", "santa"]);
 function maskName(name: string): string {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "";
-  if (parts.length === 1) return parts[0];
-  const last = parts[parts.length - 1];
-  return [...parts.slice(0, -1), `${last.charAt(0).toUpperCase()}.`].join(" ");
+  const first = parts[0];
+  const next = parts.slice(1).find((w) => !NAME_CONNECTORS.has(w.toLowerCase()));
+  return next ? `${first} ${next.charAt(0).toUpperCase()}.` : first;
 }
 
 // Carga diferida del recibo (binarios nativos satori/resvg) — igual que en sale.ts,
