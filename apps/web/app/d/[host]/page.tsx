@@ -61,6 +61,80 @@ const DEFAULT_FAQS = [
   { q: "¿Cómo recibo mi premio si gano?", a: "Te contactamos de inmediato por WhatsApp para coordinar la entrega. Los premios en efectivo se pagan por el método que prefieras." },
 ];
 
+// ───────── Landing fría: textos EDITABLES (ajustar cuando Orlando confirme cifras) ─────────
+// Paso 1 — Franja de confianza (anti-estafa), debajo de "Rifas disponibles".
+const TRUST_SEALS: { icon: string; text: string }[] = [
+  { icon: "🏆", text: "+6 años entregando premios reales (desde 2019)" },
+  { icon: "📺", text: "Sorteo EN VIVO por Instagram con la Lotería del Táchira" },
+  { icon: "✅", text: "Lotería oficial — el resultado no lo decidimos nosotros" },
+  { icon: "💛", text: "Cientos de ganadores reales" },
+];
+
+// Paso 5 — "Cómo funciona" (3 pasos) para el comprador frío.
+const HOW_IT_WORKS: { h: string; p: string }[] = [
+  { h: "Elegí tu número y apartalo", p: "Entrá a la rifa, escogé tu número y reservalo en segundos. Mientras más números lleves, menos pagás por cada uno." },
+  { h: "Confirmá tu pago por WhatsApp", p: "Pago Móvil, Binance, Zelle, Zinli, Bancolombia o efectivo. Nos mandás el comprobante por WhatsApp y listo." },
+  { h: "Espera el sorteo en vivo", p: "Se transmite EN VIVO por Instagram con la Lotería del Táchira. Si tu número sale, ganaste." },
+];
+
+// Paso 2 — mensaje pre-escrito del CTA de WhatsApp (se completa con el título de la rifa).
+const waMessage = (title: string) => `Hola, quiero apartar mi número para la rifa ${title} 🎟️`;
+
+// Paso 6 — Prueba social: listas VACÍAS por ahora → las secciones quedan OCULTAS.
+// Cargá objetos acá cuando Orlando pase el material y la sección se activa sola.
+//   VIDEO_TESTIMONIALS: { url: "https://www.youtube.com/embed/XXXX", title?: "..." }  ← URL embebible
+//   WINNERS_GALLERY:    { imageUrl: "https://res.cloudinary.com/...", caption?: "Ganador El Azulejo · feb 2026" }
+const VIDEO_TESTIMONIALS: { url: string; title?: string }[] = [];
+const WINNERS_GALLERY: { imageUrl: string; caption?: string }[] = [];
+
+// Componentes reutilizables (server) — renderizan null si la lista está vacía.
+function VideoTestimonials({ videos }: { videos: { url: string; title?: string }[] }) {
+  if (!videos.length) return null;
+  return (
+    <section className="section" id="testimonios-video" style={{ paddingTop: 0 }}>
+      <div className="wrap">
+        <div className="section-head">
+          <span className="kicker">🎥 Lo que dicen</span>
+          <h2 className="h-lg">Testimonios en <span className="gold-text">video</span></h2>
+          <p className="lead">Ganadores reales contando su experiencia.</p>
+        </div>
+        <div className="grid-videos">
+          {videos.map((v, i) => (
+            <div className="video-card" key={i}>
+              <iframe src={v.url} title={v.title || `Testimonio ${i + 1}`} loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WinnersGallery({ items }: { items: { imageUrl: string; caption?: string }[] }) {
+  if (!items.length) return null;
+  return (
+    <section className="section" id="galeria-ganadores" style={{ paddingTop: 0 }}>
+      <div className="wrap">
+        <div className="section-head">
+          <span className="kicker">📸 Entregas reales</span>
+          <h2 className="h-lg">Galería de <span className="gold-text">ganadores</span></h2>
+          <p className="lead">Premios entregados de verdad. El próximo podés ser vos.</p>
+        </div>
+        <div className="grid-gallery">
+          {items.map((g, i) => (
+            <figure className="gallery-item" key={i}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={g.imageUrl} alt={g.caption || `Ganador ${i + 1}`} loading="lazy" />
+              {g.caption && <figcaption>{g.caption}</figcaption>}
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export async function generateMetadata({ params }: { params: { host: string } }) {
   const host = decodeURIComponent(params.host);
   try {
@@ -94,6 +168,8 @@ export default async function BrandLanding({ params }: { params: { host: string 
   const testimonials = config?.testimonials ?? [];
   // Rifa principal (la más vendida) para el popup de salida.
   const featured = [...raffles].sort((a, b) => b.soldPct - a.soldPct)[0];
+  // Número de WhatsApp centralizado (config.whatsapp → primer contacto), solo dígitos para wa.me.
+  const waNumber = (config?.whatsapp || contacts[0]?.phone || "").replace(/[^\d]/g, "");
 
   return (
     <div className={`sf ${storefrontFontVars}`}>
@@ -147,6 +223,17 @@ export default async function BrandLanding({ params }: { params: { host: string 
             <h2 className="h-lg">Rifas <span className="gold-text">disponibles</span></h2>
             <p className="lead">Elegí tu rifa, apartá tus números antes de que se agoten y preparate para ganar.</p>
           </div>
+
+          {/* Franja de confianza (anti-estafa). Textos en TRUST_SEALS (editables). */}
+          <div className="trust-strip" data-reveal>
+            {TRUST_SEALS.map((s, i) => (
+              <div className="trust-seal" key={i}>
+                <span className="ts-ic" aria-hidden>{s.icon}</span>
+                <span className="ts-tx">{s.text}</span>
+              </div>
+            ))}
+          </div>
+
           {raffles.length === 0 ? (
             <p className="lead center">No hay rifas activas en este momento. ¡Volvé pronto!</p>
           ) : (
@@ -213,7 +300,23 @@ export default async function BrandLanding({ params }: { params: { host: string 
                         <span className="tb">🔴 EN VIVO por Instagram{r.loteria ? ` · ${r.loteria}` : ""}</span>
                       </div>
 
-                      <Link className="btn btn-gold btn-block btn-lg" href={`/r/${r.id}`}>🎟️ {ctaText}</Link>
+                      {/* CTA principal: WhatsApp con mensaje pre-escrito (mínima fricción).
+                          Secundario: checkout on-site para elegir número. */}
+                      {waNumber ? (
+                        <>
+                          <a
+                            className="btn btn-wa btn-block btn-lg"
+                            href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waMessage(r.title))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            💬 Apartar mi número por WhatsApp
+                          </a>
+                          <Link className="rifa-alt-link" href={`/r/${r.id}`}>o elegí tu número online →</Link>
+                        </>
+                      ) : (
+                        <Link className="btn btn-gold btn-block btn-lg" href={`/r/${r.id}`}>🎟️ {ctaText}</Link>
+                      )}
                     </div>
                   </article>
                 );
@@ -279,12 +382,16 @@ export default async function BrandLanding({ params }: { params: { host: string 
             <h2 className="h-lg">Participar en <span className="gold-text">3 pasos</span></h2>
           </div>
           <div className="steps">
-            <div className="step" data-reveal><h3>Elegí tus números</h3><p>Entrá a la rifa, escogé tus boletos a mano o al azar. Mientras más lleves, menos pagás por cada uno.</p></div>
-            <div className="step" data-reveal><h3>Pagá y subí tu comprobante</h3><p>Pago Móvil, Binance, Zelle, Zinli, Bancolombia o efectivo. Subí la captura o envíala por WhatsApp.</p></div>
-            <div className="step" data-reveal><h3>Confirmamos y jugás</h3><p>Recibís tu comprobante al instante por WhatsApp. El sorteo se transmite en vivo. ¡Mucha suerte!</p></div>
+            {HOW_IT_WORKS.map((s, i) => (
+              <div className="step" data-reveal key={i}><h3>{s.h}</h3><p>{s.p}</p></div>
+            ))}
           </div>
         </div>
       </section>
+
+      {/* ───────── PRUEBA SOCIAL (paso 6: ocultas hasta cargar VIDEO_TESTIMONIALS / WINNERS_GALLERY) ───────── */}
+      <VideoTestimonials videos={VIDEO_TESTIMONIALS} />
+      <WinnersGallery items={WINNERS_GALLERY} />
 
       {/* ───────── PAGOS ───────── */}
       <section className="section" id="pagos" style={{ paddingTop: 0 }}>
