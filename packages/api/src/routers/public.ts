@@ -9,14 +9,20 @@ import { parseStorefrontConfig } from "../lib/storefrontConfig";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// Enmascara el nombre para no exponer datos completos al verificar por boleto.
-// "Juan Pérez" -> "Ju** P****"
+// Nombre legible y privado para el verificador: PRIMER NOMBRE completo (para que el
+// cliente se reconozca) + inicial de la siguiente palabra significativa. Oculta el
+// resto del apellido. Nada de hileras de asteriscos.
+//   "María Esther de Martínez" -> "María E."
+//   "Juan Pérez"               -> "Juan P."
+//   "María de Martínez"        -> "María M."   (salta el conector "de")
+//   "Madonna"                  -> "Madonna"
+const NAME_CONNECTORS = new Set(["de", "del", "la", "las", "los", "y", "da", "do", "san", "santa"]);
 function maskName(name: string): string {
-  return (name || "")
-    .trim()
-    .split(/\s+/)
-    .map((w) => (w.length <= 2 ? w : w.slice(0, 2) + "*".repeat(Math.min(4, w.length - 2))))
-    .join(" ");
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  const first = parts[0];
+  const next = parts.slice(1).find((w) => !NAME_CONNECTORS.has(w.toLowerCase()));
+  return next ? `${first} ${next.charAt(0).toUpperCase()}.` : first;
 }
 
 // Carga diferida del recibo (binarios nativos satori/resvg) — igual que en sale.ts,

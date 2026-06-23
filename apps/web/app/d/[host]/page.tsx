@@ -15,6 +15,7 @@ import {
   WhatsAppFloat,
   Countdown,
   ExitIntentPopup,
+  BannerImage,
 } from "@/components/storefront-client";
 import { storefrontFontVars } from "./fonts";
 import "./storefront.css";
@@ -60,6 +61,74 @@ const DEFAULT_FAQS = [
   { q: "¿Cómo recibo mi premio si gano?", a: "Te contactamos de inmediato por WhatsApp para coordinar la entrega. Los premios en efectivo se pagan por el método que prefieras." },
 ];
 
+// ───────── Landing fría: textos EDITABLES (ajustar cuando Orlando confirme cifras) ─────────
+// Hero — mini-franja de autoridad (cifras "2019" / "cientos" a confirmar con Orlando).
+const HERO_TRUST: { icon: string; text: string }[] = [
+  { icon: "🏆", text: "Desde 2019 entregando premios reales" },
+  { icon: "📺", text: "Sorteos EN VIVO por Instagram" },
+  { icon: "✅", text: "Jugamos con Lotería del Táchira oficial" },
+  { icon: "💛", text: "Cientos de ganadores" },
+];
+
+// Paso 1 — Franja de confianza (anti-estafa), debajo de "Rifas disponibles".
+const TRUST_SEALS: { icon: string; text: string }[] = [
+  { icon: "🏆", text: "+6 años entregando premios reales (desde 2019)" },
+  { icon: "📺", text: "Sorteo EN VIVO por Instagram con la Lotería del Táchira" },
+  { icon: "✅", text: "Lotería oficial — el resultado no lo decidimos nosotros" },
+  { icon: "💛", text: "Cientos de ganadores reales" },
+];
+
+// Paso 5 — "Cómo funciona" (3 pasos) para el comprador frío.
+const HOW_IT_WORKS: { h: string; p: string }[] = [
+  { h: "Elegí tu número y apartalo", p: "Entrá a la rifa, escogé tu número y reservalo en segundos. Mientras más lleves, menos pagás por cada uno." },
+  { h: "Paga y sube tu comprobante (o coordiná por WhatsApp)", p: "Pago Móvil, Binance, Zelle, Zinli, Bancolombia o efectivo. Subí la captura en el sitio o mandánosla por WhatsApp." },
+  { h: "Mira el sorteo EN VIVO — si tu número sale, ganaste 🏆", p: "El sorteo se transmite por Instagram con la Lotería del Táchira. Transparencia total: el resultado no lo decidimos nosotros." },
+];
+
+// Paso 2 — mensaje pre-escrito del CTA secundario de WhatsApp.
+// Emoji dinámico según el premio (carro→🚗, moto→🏍️, efectivo→💵, tecno→📱, resto→🎟️).
+function prizeEmoji(prizeText: string | null | undefined): string {
+  const t = (prizeText || "").toLowerCase();
+  if (/(carro|auto|toyota|agya|aveo|veh[ií]culo|camioneta|0\s?km)/.test(t)) return "🚗";
+  if (/(moto|motocicleta|scooter)/.test(t)) return "🏍️";
+  if (/(efectivo|d[oó]lares|dinero|cash|usd|\$)/.test(t)) return "💵";
+  if (/(iphone|celular|tel[eé]fono|laptop|tv|televisor|tecnolog)/.test(t)) return "📱";
+  return "🎟️";
+}
+const waMessage = (title: string, emoji: string) =>
+  `Hola Hermanos Pernía, quiero apartar mi número para la rifa ${title} ${emoji}`;
+
+// Paso 6 — Prueba social. Los testimonios (texto/foto/VIDEO) se cargan vía
+// storefrontConfig.testimonials (cada uno puede traer videoUrl). La galería de
+// ganadores usa esta lista: VACÍA por ahora → la sección queda OCULTA.
+//   WINNERS_GALLERY: { imageUrl: "https://res.cloudinary.com/...", caption?: "Ganador El Azulejo · feb 2026" }
+const WINNERS_GALLERY: { imageUrl: string; caption?: string }[] = [];
+
+// Componente reutilizable (server) — renderiza null si la lista está vacía.
+function WinnersGallery({ items }: { items: { imageUrl: string; caption?: string }[] }) {
+  if (!items.length) return null;
+  return (
+    <section className="section" id="galeria-ganadores" style={{ paddingTop: 0 }}>
+      <div className="wrap">
+        <div className="section-head">
+          <span className="kicker">📸 Entregas reales</span>
+          <h2 className="h-lg">Galería de <span className="gold-text">ganadores</span></h2>
+          <p className="lead">Premios entregados de verdad. El próximo podés ser vos.</p>
+        </div>
+        <div className="grid-gallery">
+          {items.map((g, i) => (
+            <figure className="gallery-item" key={i}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={g.imageUrl} alt={g.caption || `Ganador ${i + 1}`} loading="lazy" />
+              {g.caption && <figcaption>{g.caption}</figcaption>}
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export async function generateMetadata({ params }: { params: { host: string } }) {
   const host = decodeURIComponent(params.host);
   try {
@@ -67,6 +136,16 @@ export async function generateMetadata({ params }: { params: { host: string } })
     return {
       title: data.brand.name,
       description: `${data.brand.name} — Premios reales, sorteos en vivo. Elegí tus números y participá.`,
+      // Favicon de marca (isotipo HP) SOLO en la landing — no pisa el favicon de
+      // plataforma (Rifácil) del root layout. Generados desde el logo de Cloudinary.
+      icons: {
+        icon: [
+          { url: "/brand/pernia/favicon.ico", sizes: "32x32" },
+          { url: "/brand/pernia/icon-192.png", type: "image/png", sizes: "192x192" },
+          { url: "/brand/pernia/icon-512.png", type: "image/png", sizes: "512x512" },
+        ],
+        apple: [{ url: "/brand/pernia/apple-touch-icon.png", sizes: "180x180" }],
+      },
     };
   } catch {
     return { title: "Tienda" };
@@ -93,6 +172,8 @@ export default async function BrandLanding({ params }: { params: { host: string 
   const testimonials = config?.testimonials ?? [];
   // Rifa principal (la más vendida) para el popup de salida.
   const featured = [...raffles].sort((a, b) => b.soldPct - a.soldPct)[0];
+  // Número de WhatsApp centralizado (config.whatsapp → primer contacto), solo dígitos para wa.me.
+  const waNumber = (config?.whatsapp || contacts[0]?.phone || "").replace(/[^\d]/g, "");
 
   return (
     <div className={`sf ${storefrontFontVars}`}>
@@ -116,22 +197,18 @@ export default async function BrandLanding({ params }: { params: { host: string 
                 <a className="btn btn-ghost btn-lg" href="#participar">¿Cómo participar?</a>
               </div>
               <div className="trust">
-                <span className="t"><span className="dot" /> Sorteos transparentes</span>
-                <span className="t">💳 <b>Múltiples</b> métodos de pago</span>
-                <span className="t">⚡ Confirmación inmediata</span>
+                {HERO_TRUST.map((t, i) => (
+                  <span className="t" key={i}><span className="t-ic" aria-hidden>{t.icon}</span> {t.text}</span>
+                ))}
               </div>
               {stats.length > 0 && <JackpotStats stats={stats} />}
             </div>
             <div className="hero-logo">
               {brand.logo ? (
-                <div className="ring">
-                  <div className="disc">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={brand.logo} alt={brand.name} />
-                  </div>
-                </div>
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="hero-logo-img" src={brand.logo} alt={brand.name} />
               ) : (
-                <div className="ring"><div className="disc" style={{ fontSize: "3rem" }}>🎟️</div></div>
+                <div className="hero-logo-ph">🎟️</div>
               )}
             </div>
           </div>
@@ -146,6 +223,17 @@ export default async function BrandLanding({ params }: { params: { host: string 
             <h2 className="h-lg">Rifas <span className="gold-text">disponibles</span></h2>
             <p className="lead">Elegí tu rifa, apartá tus números antes de que se agoten y preparate para ganar.</p>
           </div>
+
+          {/* Franja de confianza (anti-estafa). Textos en TRUST_SEALS (editables). */}
+          <div className="trust-strip" data-reveal>
+            {TRUST_SEALS.map((s, i) => (
+              <div className="trust-seal" key={i}>
+                <span className="ts-ic" aria-hidden>{s.icon}</span>
+                <span className="ts-tx">{s.text}</span>
+              </div>
+            ))}
+          </div>
+
           {raffles.length === 0 ? (
             <p className="lead center">No hay rifas activas en este momento. ¡Volvé pronto!</p>
           ) : (
@@ -165,8 +253,10 @@ export default async function BrandLanding({ params }: { params: { host: string 
                       {almostGone && <span className="rifa-badge hot">🔥 Casi agotada</span>}
                       <span className="rifa-price">{money(r.pricePerNumber)} <small>x número</small></span>
                       {img ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={img} alt={r.title} />
+                        <>
+                          <BannerImage src={img} alt={`Flyer ${r.title}`} />
+                          <span className="media-zoom">🔍 Ver flyer</span>
+                        </>
                       ) : (
                         <div className="ph">🎁</div>
                       )}
@@ -210,7 +300,21 @@ export default async function BrandLanding({ params }: { params: { host: string 
                         <span className="tb">🔴 EN VIVO por Instagram{r.loteria ? ` · ${r.loteria}` : ""}</span>
                       </div>
 
-                      <Link className="btn btn-gold btn-block btn-lg" href={`/r/${r.id}`}>🎟️ {ctaText}</Link>
+                      {/* CTA principal: checkout on-site (elegir número). Secundario: WhatsApp
+                          con mensaje pre-escrito por rifa (número desde config.whatsapp). */}
+                      <div className="rifa-cta">
+                        <Link className="btn btn-gold btn-block btn-lg" href={`/r/${r.id}`}>🎟️ {ctaText}</Link>
+                        {waNumber && (
+                          <a
+                            className="btn btn-wa btn-block"
+                            href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waMessage(r.title, prizeEmoji(r.prize)))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            💬 Apartar por WhatsApp
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </article>
                 );
@@ -236,8 +340,10 @@ export default async function BrandLanding({ params }: { params: { host: string 
                   <article className="winner-card" data-reveal key={w.id}>
                     <div className="winner-media">
                       {img ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={img} alt={w.title} />
+                        <>
+                          <BannerImage src={img} alt={`Flyer ${w.title}`} />
+                          <span className="media-zoom">🔍 Ver flyer</span>
+                        </>
                       ) : (
                         <div className="ph">🏆</div>
                       )}
@@ -274,12 +380,15 @@ export default async function BrandLanding({ params }: { params: { host: string 
             <h2 className="h-lg">Participar en <span className="gold-text">3 pasos</span></h2>
           </div>
           <div className="steps">
-            <div className="step" data-reveal><h3>Elegí tus números</h3><p>Entrá a la rifa, escogé tus boletos a mano o al azar. Mientras más lleves, menos pagás por cada uno.</p></div>
-            <div className="step" data-reveal><h3>Pagá y subí tu comprobante</h3><p>Pago Móvil, Binance, Zelle, Zinli, Bancolombia o efectivo. Subí la captura o envíala por WhatsApp.</p></div>
-            <div className="step" data-reveal><h3>Confirmamos y jugás</h3><p>Recibís tu comprobante al instante por WhatsApp. El sorteo se transmite en vivo. ¡Mucha suerte!</p></div>
+            {HOW_IT_WORKS.map((s, i) => (
+              <div className="step" data-reveal key={i}><h3>{s.h}</h3><p>{s.p}</p></div>
+            ))}
           </div>
         </div>
       </section>
+
+      {/* ───────── GALERÍA DE GANADORES (paso 6: oculta hasta cargar WINNERS_GALLERY) ───────── */}
+      <WinnersGallery items={WINNERS_GALLERY} />
 
       {/* ───────── PAGOS ───────── */}
       <section className="section" id="pagos" style={{ paddingTop: 0 }}>
@@ -316,6 +425,12 @@ export default async function BrandLanding({ params }: { params: { host: string 
             <div className="grid-testi">
               {testimonials.map((t, i) => (
                 <figure className="testi" data-reveal key={i}>
+                  {t.videoUrl && (
+                    <div className="testi-video">
+                      <iframe src={t.videoUrl} title={`Testimonio de ${t.name}`} loading="lazy"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                    </div>
+                  )}
                   <blockquote>“{t.text}”</blockquote>
                   <figcaption>
                     {t.photoUrl ? (

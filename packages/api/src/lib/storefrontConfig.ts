@@ -23,11 +23,14 @@ export const storefrontContactSchema = z.object({
 });
 
 // Testimonios (estructura lista; se llenan después con datos reales de ganadores).
+// Soporta texto+foto y/o VIDEO: si trae videoUrl (URL embebible: YouTube/Instagram),
+// la tarjeta muestra el video además del texto.
 export const storefrontTestimonialSchema = z.object({
   name: z.string().min(1).max(60),
   text: z.string().min(1).max(400),
   detail: z.string().max(80).optional(), // p.ej. "Ganador El Azulejo · Táchira"
   photoUrl: z.string().url().max(300).optional(),
+  videoUrl: z.string().url().max(300).optional(), // embed: https://www.youtube.com/embed/XXXX
 });
 
 export const storefrontConfigSchema = z.object({
