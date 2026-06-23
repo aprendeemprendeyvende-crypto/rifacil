@@ -72,45 +72,21 @@ const TRUST_SEALS: { icon: string; text: string }[] = [
 
 // Paso 5 — "Cómo funciona" (3 pasos) para el comprador frío.
 const HOW_IT_WORKS: { h: string; p: string }[] = [
-  { h: "Elegí tu número y apartalo", p: "Entrá a la rifa, escogé tu número y reservalo en segundos. Mientras más números lleves, menos pagás por cada uno." },
-  { h: "Confirmá tu pago por WhatsApp", p: "Pago Móvil, Binance, Zelle, Zinli, Bancolombia o efectivo. Nos mandás el comprobante por WhatsApp y listo." },
-  { h: "Espera el sorteo en vivo", p: "Se transmite EN VIVO por Instagram con la Lotería del Táchira. Si tu número sale, ganaste." },
+  { h: "Elegí tu número y apartalo", p: "Entrá a la rifa, escogé tu número y reservalo en segundos. Mientras más lleves, menos pagás por cada uno." },
+  { h: "Paga y sube tu comprobante (o coordiná por WhatsApp)", p: "Pago Móvil, Binance, Zelle, Zinli, Bancolombia o efectivo. Subí la captura en el sitio o mandánosla por WhatsApp." },
+  { h: "Mira el sorteo EN VIVO — si tu número sale, ganaste 🏆", p: "El sorteo se transmite por Instagram con la Lotería del Táchira. Transparencia total: el resultado no lo decidimos nosotros." },
 ];
 
-// Paso 2 — mensaje pre-escrito del CTA de WhatsApp (se completa con el título de la rifa).
-const waMessage = (title: string) => `Hola, quiero apartar mi número para la rifa ${title} 🎟️`;
+// Paso 2 — mensaje pre-escrito del CTA secundario de WhatsApp (dinámico con el nombre de la rifa).
+const waMessage = (title: string) => `Hola Hermanos Pernía, quiero apartar mi número para la rifa ${title} 🚗`;
 
-// Paso 6 — Prueba social: listas VACÍAS por ahora → las secciones quedan OCULTAS.
-// Cargá objetos acá cuando Orlando pase el material y la sección se activa sola.
-//   VIDEO_TESTIMONIALS: { url: "https://www.youtube.com/embed/XXXX", title?: "..." }  ← URL embebible
-//   WINNERS_GALLERY:    { imageUrl: "https://res.cloudinary.com/...", caption?: "Ganador El Azulejo · feb 2026" }
-const VIDEO_TESTIMONIALS: { url: string; title?: string }[] = [];
+// Paso 6 — Prueba social. Los testimonios (texto/foto/VIDEO) se cargan vía
+// storefrontConfig.testimonials (cada uno puede traer videoUrl). La galería de
+// ganadores usa esta lista: VACÍA por ahora → la sección queda OCULTA.
+//   WINNERS_GALLERY: { imageUrl: "https://res.cloudinary.com/...", caption?: "Ganador El Azulejo · feb 2026" }
 const WINNERS_GALLERY: { imageUrl: string; caption?: string }[] = [];
 
-// Componentes reutilizables (server) — renderizan null si la lista está vacía.
-function VideoTestimonials({ videos }: { videos: { url: string; title?: string }[] }) {
-  if (!videos.length) return null;
-  return (
-    <section className="section" id="testimonios-video" style={{ paddingTop: 0 }}>
-      <div className="wrap">
-        <div className="section-head">
-          <span className="kicker">🎥 Lo que dicen</span>
-          <h2 className="h-lg">Testimonios en <span className="gold-text">video</span></h2>
-          <p className="lead">Ganadores reales contando su experiencia.</p>
-        </div>
-        <div className="grid-videos">
-          {videos.map((v, i) => (
-            <div className="video-card" key={i}>
-              <iframe src={v.url} title={v.title || `Testimonio ${i + 1}`} loading="lazy"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
+// Componente reutilizable (server) — renderiza null si la lista está vacía.
 function WinnersGallery({ items }: { items: { imageUrl: string; caption?: string }[] }) {
   if (!items.length) return null;
   return (
@@ -300,23 +276,21 @@ export default async function BrandLanding({ params }: { params: { host: string 
                         <span className="tb">🔴 EN VIVO por Instagram{r.loteria ? ` · ${r.loteria}` : ""}</span>
                       </div>
 
-                      {/* CTA principal: WhatsApp con mensaje pre-escrito (mínima fricción).
-                          Secundario: checkout on-site para elegir número. */}
-                      {waNumber ? (
-                        <>
+                      {/* CTA principal: checkout on-site (elegir número). Secundario: WhatsApp
+                          con mensaje pre-escrito por rifa (número desde config.whatsapp). */}
+                      <div className="rifa-cta">
+                        <Link className="btn btn-gold btn-block btn-lg" href={`/r/${r.id}`}>🎟️ {ctaText}</Link>
+                        {waNumber && (
                           <a
-                            className="btn btn-wa btn-block btn-lg"
+                            className="btn btn-wa btn-block"
                             href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waMessage(r.title))}`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            💬 Apartar mi número por WhatsApp
+                            💬 Apartar por WhatsApp
                           </a>
-                          <Link className="rifa-alt-link" href={`/r/${r.id}`}>o elegí tu número online →</Link>
-                        </>
-                      ) : (
-                        <Link className="btn btn-gold btn-block btn-lg" href={`/r/${r.id}`}>🎟️ {ctaText}</Link>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </article>
                 );
@@ -389,8 +363,7 @@ export default async function BrandLanding({ params }: { params: { host: string 
         </div>
       </section>
 
-      {/* ───────── PRUEBA SOCIAL (paso 6: ocultas hasta cargar VIDEO_TESTIMONIALS / WINNERS_GALLERY) ───────── */}
-      <VideoTestimonials videos={VIDEO_TESTIMONIALS} />
+      {/* ───────── GALERÍA DE GANADORES (paso 6: oculta hasta cargar WINNERS_GALLERY) ───────── */}
       <WinnersGallery items={WINNERS_GALLERY} />
 
       {/* ───────── PAGOS ───────── */}
@@ -428,6 +401,12 @@ export default async function BrandLanding({ params }: { params: { host: string 
             <div className="grid-testi">
               {testimonials.map((t, i) => (
                 <figure className="testi" data-reveal key={i}>
+                  {t.videoUrl && (
+                    <div className="testi-video">
+                      <iframe src={t.videoUrl} title={`Testimonio de ${t.name}`} loading="lazy"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+                    </div>
+                  )}
                   <blockquote>“{t.text}”</blockquote>
                   <figcaption>
                     {t.photoUrl ? (
