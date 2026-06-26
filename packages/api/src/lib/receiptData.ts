@@ -50,6 +50,13 @@ function prizePhotoFor(raffle: any): string | null {
     : ((raffle.bannerUrl ?? null) as string | null);
 }
 
+// Copy de marketing del subtítulo del banner (texto aprobado en el mockup). El
+// Prize en DB dice "Toyota Agya 2026"; el recibo usa este override. "+ $X" se
+// resalta en dorado. Si no hay override, cae al prize de la rifa.
+const PRIZE_TAGLINE: Record<string, string> = {
+  "El Dubai": "Bello Toyota Agya 2026 GR + $1.500",
+};
+
 // Campos de la rifa que el recibo necesita, incluyendo la ESCASEZ dinámica
 // (números disponibles AHORA -> "quedan N" + % vendido), la foto del premio y los
 // packs reales (para el gancho de descuento). `raffle` debe traer los escalares
@@ -69,6 +76,7 @@ export async function raffleReceiptFields(
     drawDate: (raffle.drawDate ?? null) as Date | null,
     prizes,
     prize: (raffle.prize ?? null) as string | null,
+    prizeTagline: (PRIZE_TAGLINE[raffle.title] ?? null) as string | null,
     bannerUrl: prizePhotoFor(raffle),
     totalNumbers: (raffle.totalNumbers ?? null) as number | null,
     remaining,

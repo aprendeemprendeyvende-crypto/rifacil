@@ -190,6 +190,7 @@ export interface GenerateReceiptInput {
     drawDate?: Date | string | null;
     prizes?: { titulo: string }[] | null;
     prize?: string | null; // texto del premio (respaldo si no hay prizes[])
+    prizeTagline?: string | null; // copy del subtítulo del banner (override de marketing)
     bannerUrl?: string | null; // foto LIMPIA del premio (Cloudinary) para el banner
     totalNumbers?: number | null; // total de números de la rifa (para % escasez)
     remaining?: number | null; // números disponibles AHORA (para "quedan N")
@@ -226,7 +227,12 @@ export async function renderReceiptPng(
   const soldPct = total > 0 ? Math.min(100, Math.round(((total - remaining) / total) * 100)) : 0;
 
   // Premio: "Bello Toyota Agya 2026 GR" + "+ $1.500" en dorado (si viene en el texto).
-  const prizeText = (raffle.prizes?.[0]?.titulo || raffle.prize || "Gran premio").trim();
+  const prizeText = (
+    raffle.prizeTagline ||
+    raffle.prizes?.[0]?.titulo ||
+    raffle.prize ||
+    "Gran premio"
+  ).trim();
   const prizeMatch = prizeText.match(/^(.*?)(\+\s*\$.*)$/);
   const prizeMain = (prizeMatch ? prizeMatch[1] : prizeText).trim();
   const prizeAdd = prizeMatch ? prizeMatch[2].trim() : "";
