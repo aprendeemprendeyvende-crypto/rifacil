@@ -239,7 +239,20 @@ export async function renderReceiptPng(
 
   // Línea de sorteo: "{pct}% vendido · Sorteo 11 JUL 2026, 10:10PM · Lotería Táchira"
   const drawStr = fmtDraw(raffle.drawDate);
-  const lotStr = raffle.lottery ? `Lotería ${raffle.lottery}` : "";
+  // Evita "Lotería Lotería del Táchira": no anteponer "Lotería" si ya lo trae.
+  const lotStr = raffle.lottery
+    ? /^loter[ií]a\b/i.test(raffle.lottery.trim())
+      ? raffle.lottery.trim()
+      : `Lotería ${raffle.lottery.trim()}`
+    : "";
+
+  // Escasez HONESTA: el grito "casi agotada" solo si de verdad va muy vendida.
+  const scarcityHeadline =
+    soldPct >= 80
+      ? `🔥 ¡CASI AGOTADA! Solo quedan ${remaining} números`
+      : soldPct >= 50
+        ? `⚡ ¡Va rápido! Quedan ${remaining} números`
+        : `🎟️ Quedan ${remaining} números disponibles`;
   const scarcityMeta = [
     `${soldPct}% vendido`,
     drawStr ? `Sorteo ${drawStr}` : "",
@@ -335,53 +348,81 @@ export async function renderReceiptPng(
         ]
       ),
 
-      // 2) Banner del premio (foto real) con "EL DUBAI" en dorado
-      el(
-        "div",
-        { display: "flex", position: "relative", height: 130, width: "100%", overflow: "hidden" },
-        [
-          bannerUri
-            ? img(bannerUri, { width: "100%", height: "100%", objectFit: "cover" })
-            : el("div", { width: "100%", height: "100%", backgroundColor: "#1a1a1a" }),
-          // título sobre la foto
-          el(
+      // 2) Banner del premio. CON foto: overlay sobre la imagen. SIN foto: hero
+      //    centrado compacto (evita el hueco negro gigante cuando no hay foto).
+      bannerUri
+        ? el(
             "div",
-            { display: "flex", position: "absolute", top: 8, left: 0, right: 0, justifyContent: "center" },
-            el(
-              "div",
-              {
-                color: C.gold,
-                fontSize: 24,
-                fontWeight: 700,
-                letterSpacing: 2,
-                textShadow: "0 1px 3px #000",
-              },
-              (raffle.title || "").toUpperCase()
-            )
-          ),
-          // subtítulo del premio (gradiente inferior)
-          el(
+            { display: "flex", position: "relative", height: 130, width: "100%", overflow: "hidden" },
+            [
+              img(bannerUri, { width: "100%", height: "100%", objectFit: "cover" }),
+              // título sobre la foto
+              el(
+                "div",
+                { display: "flex", position: "absolute", top: 8, left: 0, right: 0, justifyContent: "center" },
+                el(
+                  "div",
+                  {
+                    color: C.gold,
+                    fontSize: 24,
+                    fontWeight: 700,
+                    letterSpacing: 2,
+                    textShadow: "0 1px 3px #000",
+                  },
+                  (raffle.title || "").toUpperCase()
+                )
+              ),
+              // subtítulo del premio (gradiente inferior)
+              el(
+                "div",
+                {
+                  display: "flex",
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: "8px 14px",
+                  backgroundImage: `linear-gradient(transparent, ${C.bg})`,
+                },
+                el(
+                  "div",
+                  { display: "flex", color: C.white, fontSize: 11, fontWeight: 700 },
+                  [
+                    el("div", { color: C.white }, prizeMain + (prizeAdd ? " " : "")),
+                    prizeAdd ? el("div", { color: C.gold }, prizeAdd) : el("div", {}),
+                  ]
+                )
+              ),
+            ]
+          )
+        : el(
             "div",
             {
               display: "flex",
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              padding: "8px 14px",
-              backgroundImage: `linear-gradient(transparent, ${C.bg})`,
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              padding: "20px 16px",
+              backgroundColor: "#141414",
+              borderBottom: `1px solid ${C.inkLine}`,
             },
-            el(
-              "div",
-              { display: "flex", color: C.white, fontSize: 11, fontWeight: 700 },
-              [
-                el("div", { color: C.white }, prizeMain + (prizeAdd ? " " : "")),
-                prizeAdd ? el("div", { color: C.gold }, prizeAdd) : el("div", {}),
-              ]
-            )
+            [
+              el(
+                "div",
+                { color: C.gold, fontSize: 28, fontWeight: 700, letterSpacing: 2, textAlign: "center" },
+                (raffle.title || "").toUpperCase()
+              ),
+              el(
+                "div",
+                { display: "flex", marginTop: 8, fontSize: 13, fontWeight: 700, textAlign: "center" },
+                [
+                  el("div", { color: C.white }, prizeMain + (prizeAdd ? " " : "")),
+                  prizeAdd ? el("div", { color: C.gold }, prizeAdd) : el("div", {}),
+                ]
+              ),
+            ]
           ),
-        ]
-      ),
 
       // 3) Franja de escasez ROJA (N y % dinámicos)
       el(
@@ -397,7 +438,7 @@ export async function renderReceiptPng(
           el(
             "div",
             { color: C.white, fontSize: 12, fontWeight: 700, textAlign: "center" },
-            `🔥 ¡CASI AGOTADA! Solo quedan ${remaining} números`
+            scarcityHeadline
           ),
           // barra de progreso
           el(
@@ -455,10 +496,10 @@ export async function renderReceiptPng(
               debtValue > 0 ? dataRow("Deuda", money(debtValue), C.gold) : el("div", {}),
               rate > 0
                 ? dataRow(
-                    "Equivalente",
+                    debtValue > 0 ? "Falta en Bs" : "Total en Bs",
                     `${((debtValue > 0 ? debtValue : totalValue) * rate).toLocaleString("es-VE", {
                       maximumFractionDigits: 2,
-                    })} Bs`,
+                    })} Bs · tasa ${rate.toLocaleString("es-VE", { maximumFractionDigits: 2 })}`,
                     C.faint,
                     { small: true }
                   )
